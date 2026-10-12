@@ -1,0 +1,46 @@
+{
+  "dataset_name": "RVCE Campus Query Intent Benchmark (Seed Set)",
+  "version": "1.0.0-seed",
+  "created_at": "2026-10-12T20:25:00Z",
+  "provenance_statement": "This dataset consists of 40 manually authored benchmark example questions designed for the Phase 1 Intent Classification task. These questions were crafted by the development team to reflect realistic phrasing, vocabulary, and intents commonly associated with college services at RVCE. They are NOT survey responses or logged inputs collected from real students.",
+  "total_records": 40,
+  "unique_queries": 40,
+  "schema": [
+    {
+      "column": "query_id",
+      "type": "string",
+      "description": "Unique identifier formatted as Q001..Q040"
+    },
+    {
+      "column": "query_text",
+      "type": "string",
+      "description": "Natural language student-style campus query"
+    },
+    {
+      "column": "intent",
+      "type": "string",
+      "description": "Target intent classification label (one of 8 approved classes)"
+    },
+    {
+      "column": "split_group",
+      "type": "string",
+      "description": "Designated split ('train' or 'test') with stratified 4:1 class distribution"
+    }
+  ],
+  "intent_classes": {
+    "admissions": "Questions regarding entrance quotas (KCET, COMEDK, Management Quota, PGCET, DCET lateral entry), eligibility, cutoffs, and verification.",
+    "fees_finance": "Questions regarding tuition fees, payment deadlines, fines, installments, challans, bank accounts, and scholarships (e.g. SSP portal).",
+    "academics_exams": "Questions regarding autonomous calendar, timetables, scheme syllabus, attendance rules, fast-track exams, credit requirements, and revaluation.",
+    "departments_faculty": "Questions regarding academic departments, Heads of Department (HODs), faculty directory, cabin locations, and specialized branch electives.",
+    "placements_careers": "Questions regarding campus recruitment statistics, packages, hiring companies, 6-month internships, training cell assistance, and backlog eligibility.",
+    "facilities_hostels": "Questions regarding hostel accommodation, curfew/in-time rules, mess fees, central library hours, sports infrastructure, and gym.",
+    "student_services_clubs": "Questions regarding bonafide certificates, student verification, technical/cultural clubs, NSS/NCC enrollment, and NAD Digilocker portals.",
+    "general_college_info": "Questions regarding college contact numbers, location, nearest metro stations, VTU affiliation status, ranking reports, and principal office."
+  },
+  "distribution_per_intent": 5,
+  "splits": {
+    "train": 32,
+    "test": 8
+  },
+  "evaluation_warning": "Warning: 40 examples represent an initial seed set for schema review and baseline verification. This volume is not sufficient for reliable generalization or statistical significance in production evaluation."
+}

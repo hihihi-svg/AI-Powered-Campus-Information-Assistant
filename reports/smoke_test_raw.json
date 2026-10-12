@@ -1,0 +1,306 @@
+{
+  "Q-ADM-1": {
+    "question": "What is the COMEDK rank cutoff for Computer Science at RVCE?",
+    "intent": "admissions",
+    "results": [
+      {
+        "rank": 1,
+        "score": 0.2051,
+        "document_title": "Research -",
+        "source_url": "https://rvce.edu.in/department/ece/research/",
+        "topic": "departments",
+        "heading": "Research & Development Laboratory",
+        "excerpt": "Our Research and Development Labs are dedicated spaces for faculty and students to pursue cutting-edge research in emerging areas of computer science. Equipped with advanced tools and resources, these labs drive innovation and discovery."
+      },
+      {
+        "rank": 2,
+        "score": 0.1821,
+        "document_title": "RV College of Engineering Bengaluru | Top Engineering Institution",
+        "source_url": "https://rvce.edu.in/",
+        "topic": null,
+        "heading": "Computer Science & Engineering",
+        "excerpt": "Provides hands-on learning and research, guiding students to build software, algorithms and systems driving global technology."
+      },
+      {
+        "rank": 3,
+        "score": 0.1791,
+        "document_title": "Research -",
+        "source_url": "https://rvce.edu.in/department/ece/research/",
+        "topic": "departments",
+        "heading": "Publications",
+        "excerpt": "The academic excellence of our department is reflected in our strong publication record. Our faculty and research scholars regularly contribute to prestigious international journals and conferences, advancing knowledge in various domains of computer science. Browse through our comprehensive collecti"
+      }
+    ],
+    "status": "RETRIEVED"
+  },
+  "Q-ADM-2": {
+    "question": "How do I apply for lateral entry through DCET?",
+    "intent": "admissions",
+    "results": [
+      {
+        "rank": 1,
+        "score": 0.1249,
+        "document_title": "Admission Circulars",
+        "source_url": "https://rvce.edu.in/admission-circulars/",
+        "topic": "admissions",
+        "heading": "Admission Details 2026-27",
+        "excerpt": "- PGCET & Management: M.Tech & MCA : Documents and Balance Fees Details for Admission 2026-2027 - DCET: Procedure and Balance Fees Details for BE (Lateral Entry) 202 6 -2 7 - COMED-K: Balance Fees & Procedure for 1st Year BE Admission 202 6 – 2 7 - K EA : Balance Fees & Procedure for 1st Year BE Adm"
+      }
+    ],
+    "status": "RETRIEVED"
+  },
+  "Q-FEE-1": {
+    "question": "What is the tuition fee for B.E. first year at RVCE?",
+    "intent": "fees_finance",
+    "results": [
+      {
+        "rank": 1,
+        "score": 0.1592,
+        "document_title": "Academic Circular",
+        "source_url": "https://rvce.edu.in/academic-circular/",
+        "topic": "examinations_regulations",
+        "heading": "B.E. first year",
+        "excerpt": "Here, you’ll find all foundational academic circulars, updates on VTU/Autonomous schemes, first-semester examination schedules, timetables, induction programme details, and other important instructions."
+      },
+      {
+        "rank": 2,
+        "score": 0.0989,
+        "document_title": "RV College of Engineering Bengaluru | Top Engineering Institution",
+        "source_url": "https://rvce.edu.in/",
+        "topic": null,
+        "heading": "Admissions",
+        "excerpt": "Access crucial notifications regarding eligibility criteria, application deadlines, counselling schedules, fee payments and seat confirmation procedures."
+      },
+      {
+        "rank": 3,
+        "score": 0.0883,
+        "document_title": "B.E first year Academic circulars",
+        "source_url": "https://rvce.edu.in/b-e-first-year-academic-circulars/",
+        "topic": "admissions",
+        "heading": "Academic Year 2025-2026",
+        "excerpt": "- 01 Oct 2026/049 : Registration for the Supplementary Semester for the ACY 2026-27. (failed course declared under DX(NSSR & NSAR) category for year back students(2025 admission batch 2025 scheme). - 28 Sept 2026/046:Schedule of CIE I for I Semester B.E. Programs of 2026 admission batch . - Physics"
+      }
+    ],
+    "status": "RETRIEVED"
+  },
+  "Q-FEE-2": {
+    "question": "What is the late fee penalty for delayed tuition payment?",
+    "intent": "fees_finance",
+    "results": [
+      {
+        "rank": 1,
+        "score": 0.1189,
+        "document_title": "RV College of Engineering Bengaluru | Top Engineering Institution",
+        "source_url": "https://rvce.edu.in/",
+        "topic": null,
+        "heading": "Admissions",
+        "excerpt": "Access crucial notifications regarding eligibility criteria, application deadlines, counselling schedules, fee payments and seat confirmation procedures."
+      },
+      {
+        "rank": 2,
+        "score": 0.0732,
+        "document_title": "Examination Circulars",
+        "source_url": "https://rvce.edu.in/examination-circulars/",
+        "topic": "examinations_regulations",
+        "heading": "Archived Examination Circulars",
+        "excerpt": "Registration and Payment of fees for Supplementary SEE of UG –1 st semester (Odd) 2022 scheme offered courses only, Jan/Feb-2026 Examination. Schedule for SEE Answer Paper Viewing (PVP) of PG – M.Tech & MCA, II semester, Regular and I semester Supplementary (2024 Scheme) Autonomous Examinations held"
+      },
+      {
+        "rank": 3,
+        "score": 0.0507,
+        "document_title": "Examination Circulars",
+        "source_url": "https://rvce.edu.in/examination-circulars/",
+        "topic": "examinations_regulations",
+        "heading": "2025-2026",
+        "excerpt": "22.09.2026/492 : Rescheduled Timetable for Fast Track Examinations of UG – III Semester (2022 Scheme) on 22.10.2026 instead of 10.10.2026 – September 2026 09.09.2026/ 487 : Rescheduled Tentative Fast Track Examinations Timetable Sept/Oct-2026 17.09.2026/483: Final Call for Collection of Unclaimed Go"
+      }
+    ],
+    "status": "RETRIEVED"
+  },
+  "Q-EXA-1": {
+    "question": "What is the minimum attendance required for semester exams?",
+    "intent": "examinations_regulations",
+    "results": [
+      {
+        "rank": 1,
+        "score": 0.1002,
+        "document_title": "RV College of Engineering Bengaluru | Top Engineering Institution",
+        "source_url": "https://rvce.edu.in/",
+        "topic": null,
+        "heading": "Examinations",
+        "excerpt": "Check for official circulars related to examination timetables, registration processes, results announcements, revaluation dates and supplementary exams."
+      },
+      {
+        "rank": 2,
+        "score": 0.0603,
+        "document_title": "Academic Planning",
+        "source_url": "https://rvce.edu.in/department/etc/academic_planning/",
+        "topic": "departments",
+        "heading": "Academic Calendars",
+        "excerpt": "Stay ahead and plan your semester effectively with the official Academic Calendar. Here, you will find a detailed schedule of all academic events for the current year."
+      },
+      {
+        "rank": 3,
+        "score": 0.0603,
+        "document_title": "Academic Planning -",
+        "source_url": "https://rvce.edu.in/department/cse/academic_planning/",
+        "topic": "departments",
+        "heading": "Academic calendars",
+        "excerpt": "Stay ahead and plan your semester effectively with the official Academic Calendar. Here, you will find a detailed schedule of all academic events for the current year."
+      }
+    ],
+    "status": "RETRIEVED"
+  },
+  "Q-EXA-2": {
+    "question": "How can I apply for revaluation of my exam paper?",
+    "intent": "examinations_regulations",
+    "results": [
+      {
+        "rank": 1,
+        "score": 0.1115,
+        "document_title": "RV College of Engineering Bengaluru | Top Engineering Institution",
+        "source_url": "https://rvce.edu.in/",
+        "topic": null,
+        "heading": "Examinations",
+        "excerpt": "Check for official circulars related to examination timetables, registration processes, results announcements, revaluation dates and supplementary exams."
+      },
+      {
+        "rank": 2,
+        "score": 0.0715,
+        "document_title": "Examination Circulars",
+        "source_url": "https://rvce.edu.in/examination-circulars/",
+        "topic": "examinations_regulations",
+        "heading": "Archived Examination Circulars",
+        "excerpt": "Registration and Payment of fees for Supplementary SEE of UG –1 st semester (Odd) 2022 scheme offered courses only, Jan/Feb-2026 Examination. Schedule for SEE Answer Paper Viewing (PVP) of PG – M.Tech & MCA, II semester, Regular and I semester Supplementary (2024 Scheme) Autonomous Examinations held"
+      },
+      {
+        "rank": 3,
+        "score": 0.0572,
+        "document_title": "Examination Circulars",
+        "source_url": "https://rvce.edu.in/examination-circulars/",
+        "topic": "examinations_regulations",
+        "heading": "2025-2026",
+        "excerpt": "22.09.2026/492 : Rescheduled Timetable for Fast Track Examinations of UG – III Semester (2022 Scheme) on 22.10.2026 instead of 10.10.2026 – September 2026 09.09.2026/ 487 : Rescheduled Tentative Fast Track Examinations Timetable Sept/Oct-2026 17.09.2026/483: Final Call for Collection of Unclaimed Go"
+      }
+    ],
+    "status": "RETRIEVED"
+  },
+  "Q-DEP-1": {
+    "question": "Who is the head of the Computer Science department?",
+    "intent": "departments_faculty",
+    "results": [
+      {
+        "rank": 1,
+        "score": 0.2483,
+        "document_title": "Research -",
+        "source_url": "https://rvce.edu.in/department/ece/research/",
+        "topic": "departments",
+        "heading": "Research & Development Laboratory",
+        "excerpt": "Our Research and Development Labs are dedicated spaces for faculty and students to pursue cutting-edge research in emerging areas of computer science. Equipped with advanced tools and resources, these labs drive innovation and discovery."
+      },
+      {
+        "rank": 2,
+        "score": 0.2471,
+        "document_title": "Research -",
+        "source_url": "https://rvce.edu.in/department/ece/research/",
+        "topic": "departments",
+        "heading": "Publications",
+        "excerpt": "The academic excellence of our department is reflected in our strong publication record. Our faculty and research scholars regularly contribute to prestigious international journals and conferences, advancing knowledge in various domains of computer science. Browse through our comprehensive collecti"
+      },
+      {
+        "rank": 3,
+        "score": 0.2471,
+        "document_title": "Research -",
+        "source_url": "https://rvce.edu.in/department/ece/research/",
+        "topic": "departments",
+        "heading": "Publications",
+        "excerpt": "The academic excellence of our department is reflected in our strong publication record. Our faculty and research scholars regularly contribute to prestigious international journals and conferences, advancing knowledge in various domains of computer science. Browse through our comprehensive collecti"
+      }
+    ],
+    "status": "RETRIEVED"
+  },
+  "Q-PLA-1": {
+    "question": "What companies recruited from RVCE in the last placement season?",
+    "intent": "placements_careers",
+    "results": [
+      {
+        "rank": 1,
+        "score": 0.1944,
+        "document_title": "Chemical Engineering (RVCE) | Placement & Career Highlights",
+        "source_url": "https://rvce.edu.in/department/chemical_engineering/ce_placement/",
+        "topic": "departments",
+        "heading": "PLACEMENT",
+        "excerpt": "Statistics OF CE Review the latest placement statistics, which consistently demonstrate RVCE’s commitment to career success. Our students are placed in the world’s most innovative companies, securing premium offers across diverse sectors."
+      },
+      {
+        "rank": 2,
+        "score": 0.1153,
+        "document_title": "Chemical Engineering (RVCE) | Placement & Career Highlights",
+        "source_url": "https://rvce.edu.in/department/chemical_engineering/ce_placement/",
+        "topic": "departments",
+        "heading": "B.E. - CHE PLACEMENT STATISTICS",
+        "excerpt": "2024-25 Number of companies visited – 23 Number of offers made – 28 Number of students selected – 28 Average salary(LPA) – 6.69 Maximum salary(LPA) – 14.63 2023-24 Number of companies visited – 20 Number of offers made – 25 Number of students selected – 25 Average salary(LPA) – 6.78 Maximum salary(L"
+      },
+      {
+        "rank": 3,
+        "score": 0.0962,
+        "document_title": "RVCE Bengaluru | Placement & Training Opportunities for Students",
+        "source_url": "https://rvce.edu.in/placement_and_training/",
+        "topic": "departments",
+        "heading": "E-mail Id: placement@rvce.edu.in",
+        "excerpt": "The academic excellence at RVCE is reflected in its student’s exemplary record in placements in the corporate and engineering sectors. RVCE has consistently maintained an excellent recruitment record. The graduates and post- graduates of RVCE have been recruited by some of the world’s leading corpor"
+      }
+    ],
+    "status": "RETRIEVED"
+  },
+  "Q-FAC-1": {
+    "question": "Is there a hostel facility available for girls at RVCE?",
+    "intent": "facilities_hostels",
+    "results": [
+      {
+        "rank": 1,
+        "score": 0.0671,
+        "document_title": "RVCE Bengaluru | Placement & Training Opportunities for Students",
+        "source_url": "https://rvce.edu.in/placement_and_training/",
+        "topic": "departments",
+        "heading": "Infrastructure & Facilities",
+        "excerpt": "Placement office has total 739 Sq. mts floor area, consisting of 1 Seminar Hall of 70 seating capacity with audio video facilities, Placement officer’s room, pantry room, staff room, reception area, Library, 6 interview rooms, 2 Group Discussion Rooms. Video Conferencing facility in the department i"
+      }
+    ],
+    "status": "RETRIEVED"
+  },
+  "Q-GEN-1": {
+    "question": "What is the address and contact number of RVCE?",
+    "intent": "general_college_info",
+    "results": [
+      {
+        "rank": 1,
+        "score": 0.101,
+        "document_title": "RVCE Bengaluru | AI & ML Dept Placement Success Stories",
+        "source_url": "https://rvce.edu.in/department/ai_ml/al_ml_placement/",
+        "topic": "departments",
+        "heading": "B.E. - AI-ML PLACEMENT STATISTICS",
+        "excerpt": "2024-25 Number of companies visited – 47 Number of offers made – 67 Number of students selected – 59 Average salary(LPA) – 14.50 Maximum salary(LPA) – 53"
+      },
+      {
+        "rank": 2,
+        "score": 0.101,
+        "document_title": "RVCE EEE Jobs & Placement Record | Engineering College",
+        "source_url": "https://rvce.edu.in/department/eee/eee_placement/",
+        "topic": "departments",
+        "heading": "M.Tech. in Power Electronics",
+        "excerpt": "2024-25* Number of companies visited – 8 Number of offers made – 6 Number of students selected – 6 Average salary – 6.83 Maximum salary – 10 2023-24 Number of companies visited – 14 Number of offers made – 11 Number of students selected – 11 Average salary – 6.68 Maximum salary – 18 2021-22 Number o"
+      },
+      {
+        "rank": 3,
+        "score": 0.095,
+        "document_title": "ECE Placements",
+        "source_url": "https://rvce.edu.in/department/ece/placement/",
+        "topic": "departments",
+        "heading": "M.Tech. - CS PLACEMENT STATISTICS",
+        "excerpt": "2024-25* Number of Companies visited – 9 Number of offers made – 6 Number of Students Selected – 6 Average Salary – 10.33 Maximum salary – 15 2022-23 Number of Companies visited – 12 Number of offers made – 4 Number of Students Selected – 4 Average Salary – 8.46 Maximum salary – 16.24 2023-24 Number"
+      }
+    ],
+    "status": "RETRIEVED"
+  }
+}

@@ -1,0 +1,72 @@
+# ==============================================================================
+# Campus Information Knowledge Acquisition Pipeline Configuration
+# ==============================================================================
+
+crawler:
+  start_urls:
+    - "https://rvce.edu.in/"
+  allowed_domains:
+    - "rvce.edu.in"
+  max_depth: 3
+  max_pages: 60
+  max_pdfs: 15
+  request_delay: 0.3
+  timeout: 25
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+  verify_ssl: false
+  respect_robots_txt: true
+  
+  # Priority keywords used to rank queue discovery for high-value campus domains
+  priority_keywords:
+    - "academic"
+    - "department"
+    - "admission"
+    - "fee"
+    - "hostel"
+    - "facility"
+    - "placement"
+    - "exam"
+    - "circular"
+    - "calendar"
+    - "programme"
+    - "research"
+    - "student"
+    - "contact"
+    - "scholarship"
+
+  # Non-textual binary media extensions to skip
+  ignored_extensions:
+    - ".jpg"
+    - ".jpeg"
+    - ".png"
+    - ".gif"
+    - ".webp"
+    - ".zip"
+    - ".tar"
+    - ".gz"
+    - ".mp4"
+    - ".mp3"
+    - ".avi"
+    - ".mov"
+    - ".css"
+    - ".js"
+    - ".svg"
+    - ".woff"
+    - ".woff2"
+    - ".ico"
+    - ".exe"
+    - ".dmg"
+
+  retry_attempts: 3
+  retry_backoff_factor: 1.5
+
+storage:
+  raw_data_path: "data/raw/campus_documents.jsonl"
+  processed_data_path: "data/processed/campus_documents.jsonl"
+  manifest_path: "data/raw/collection_manifest.json"
+  report_path: "reports/data_collection_report.json"
+
+cleaning:
+  min_content_length: 50
+  near_duplicate_similarity_threshold: 0.85
+  deduplicate_lines: true

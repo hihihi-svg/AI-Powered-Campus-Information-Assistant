@@ -1,0 +1,197 @@
+{
+  "metadata": {
+    "report_timestamp": "2026-10-12T14:28:27.669561+00:00",
+    "pipeline_version": "1.0.0",
+    "target_domain": [
+      "rvce.edu.in"
+    ]
+  },
+  "summary": {
+    "total_documents_collected": 60,
+    "schema_valid_records": 60,
+    "validation_issues_count": 0,
+    "successful_extractions": 45,
+    "empty_extractions": 15,
+    "partial_extractions": 0,
+    "failed_extractions": 0,
+    "crawl_errors_count": 1
+  },
+  "source_coverage": {
+    "by_type": {
+      "HTML": 45,
+      "PDF": 15
+    },
+    "by_topic": {
+      "unclassified": 1,
+      "examinations_regulations": 6,
+      "fees_finance": 9,
+      "admissions": 10,
+      "academics": 2,
+      "departments": 31,
+      "placements_careers": 1
+    }
+  },
+  "duplicate_analysis": {
+    "exact_url_duplicates_count": 0,
+    "exact_content_duplicates_count": 3,
+    "exact_content_duplicates": [
+      {
+        "duplicate_id": "doc_html_b7d1938d436c0421",
+        "original_id": "doc_html_5a3381b6b3bbdbe5",
+        "source_url": "https://rvce.edu.in/academic_student_services/"
+      },
+      {
+        "duplicate_id": "doc_html_ce38440aeb14457a",
+        "original_id": "doc_html_f21f055fd4d98af2",
+        "source_url": "https://rvce.edu.in/department/chemical_engineering/academic_planning/"
+      },
+      {
+        "duplicate_id": "doc_html_b91ce3f237697b46",
+        "original_id": "doc_html_52ec91e7b93d9a82",
+        "source_url": "https://rvce.edu.in/department/etc/ete-placement/"
+      }
+    ],
+    "near_duplicates_count": 17,
+    "near_duplicates_threshold": 0.85,
+    "near_duplicates_samples": [
+      {
+        "doc_id_1": "doc_html_5a3381b6b3bbdbe5",
+        "doc_id_2": "doc_html_b7d1938d436c0421",
+        "url_1": "https://rvce.edu.in/academics_and_examinations/academic_student_services/",
+        "url_2": "https://rvce.edu.in/academic_student_services/",
+        "jaccard_similarity": 1.0
+      },
+      {
+        "doc_id_1": "doc_html_00cff8d591d7cc74",
+        "doc_id_2": "doc_html_f21f055fd4d98af2",
+        "url_1": "https://rvce.edu.in/department/ai_ml/academic_planning/",
+        "url_2": "https://rvce.edu.in/department/ae/academic_planning/",
+        "jaccard_similarity": 0.9663
+      },
+      {
+        "doc_id_1": "doc_html_00cff8d591d7cc74",
+        "doc_id_2": "doc_html_ce38440aeb14457a",
+        "url_1": "https://rvce.edu.in/department/ai_ml/academic_planning/",
+        "url_2": "https://rvce.edu.in/department/chemical_engineering/academic_planning/",
+        "jaccard_similarity": 0.9663
+      },
+      {
+        "doc_id_1": "doc_html_00cff8d591d7cc74",
+        "doc_id_2": "doc_html_b39cb9dd99d10540",
+        "url_1": "https://rvce.edu.in/department/ai_ml/academic_planning/",
+        "url_2": "https://rvce.edu.in/department/civil_engineering/academic_planning/",
+        "jaccard_similarity": 0.8653
+      },
+      {
+        "doc_id_1": "doc_html_00cff8d591d7cc74",
+        "doc_id_2": "doc_html_b46e5800134c9ed4",
+        "url_1": "https://rvce.edu.in/department/ai_ml/academic_planning/",
+        "url_2": "https://rvce.edu.in/department/etc/academic_planning/",
+        "jaccard_similarity": 0.9341
+      },
+      {
+        "doc_id_1": "doc_html_f21f055fd4d98af2",
+        "doc_id_2": "doc_html_ce38440aeb14457a",
+        "url_1": "https://rvce.edu.in/department/ae/academic_planning/",
+        "url_2": "https://rvce.edu.in/department/chemical_engineering/academic_planning/",
+        "jaccard_similarity": 1.0
+      },
+      {
+        "doc_id_1": "doc_html_f21f055fd4d98af2",
+        "doc_id_2": "doc_html_b39cb9dd99d10540",
+        "url_1": "https://rvce.edu.in/department/ae/academic_planning/",
+        "url_2": "https://rvce.edu.in/department/civil_engineering/academic_planning/",
+        "jaccard_similarity": 0.8947
+      },
+      {
+        "doc_id_1": "doc_html_f21f055fd4d98af2",
+        "doc_id_2": "doc_html_b46e5800134c9ed4",
+        "url_1": "https://rvce.edu.in/department/ae/academic_planning/",
+        "url_2": "https://rvce.edu.in/department/etc/academic_planning/",
+        "jaccard_similarity": 0.9665
+      },
+      {
+        "doc_id_1": "doc_html_f21f055fd4d98af2",
+        "doc_id_2": "doc_html_26bf129c2a27529b",
+        "url_1": "https://rvce.edu.in/department/ae/academic_planning/",
+        "url_2": "https://rvce.edu.in/department/eee/academic_planning/",
+        "jaccard_similarity": 0.8653
+      },
+      {
+        "doc_id_1": "doc_html_ce38440aeb14457a",
+        "doc_id_2": "doc_html_b39cb9dd99d10540",
+        "url_1": "https://rvce.edu.in/department/chemical_engineering/academic_planning/",
+        "url_2": "https://rvce.edu.in/department/civil_engineering/academic_planning/",
+        "jaccard_similarity": 0.8947
+      },
+      {
+        "doc_id_1": "doc_html_ce38440aeb14457a",
+        "doc_id_2": "doc_html_b46e5800134c9ed4",
+        "url_1": "https://rvce.edu.in/department/chemical_engineering/academic_planning/",
+        "url_2": "https://rvce.edu.in/department/etc/academic_planning/",
+        "jaccard_similarity": 0.9665
+      },
+      {
+        "doc_id_1": "doc_html_ce38440aeb14457a",
+        "doc_id_2": "doc_html_26bf129c2a27529b",
+        "url_1": "https://rvce.edu.in/department/chemical_engineering/academic_planning/",
+        "url_2": "https://rvce.edu.in/department/eee/academic_planning/",
+        "jaccard_similarity": 0.8653
+      },
+      {
+        "doc_id_1": "doc_html_b39cb9dd99d10540",
+        "doc_id_2": "doc_html_11b5a0a3643d63b5",
+        "url_1": "https://rvce.edu.in/department/civil_engineering/academic_planning/",
+        "url_2": "https://rvce.edu.in/department/ece/academic_planning/",
+        "jaccard_similarity": 0.8964
+      },
+      {
+        "doc_id_1": "doc_html_b39cb9dd99d10540",
+        "doc_id_2": "doc_html_b46e5800134c9ed4",
+        "url_1": "https://rvce.edu.in/department/civil_engineering/academic_planning/",
+        "url_2": "https://rvce.edu.in/department/etc/academic_planning/",
+        "jaccard_similarity": 0.8953
+      },
+      {
+        "doc_id_1": "doc_html_b39cb9dd99d10540",
+        "doc_id_2": "doc_html_26bf129c2a27529b",
+        "url_1": "https://rvce.edu.in/department/civil_engineering/academic_planning/",
+        "url_2": "https://rvce.edu.in/department/eee/academic_planning/",
+        "jaccard_similarity": 0.9372
+      },
+      {
+        "doc_id_1": "doc_html_b46e5800134c9ed4",
+        "doc_id_2": "doc_html_26bf129c2a27529b",
+        "url_1": "https://rvce.edu.in/department/etc/academic_planning/",
+        "url_2": "https://rvce.edu.in/department/eee/academic_planning/",
+        "jaccard_similarity": 0.8953
+      },
+      {
+        "doc_id_1": "doc_html_52ec91e7b93d9a82",
+        "doc_id_2": "doc_html_b91ce3f237697b46",
+        "url_1": "https://rvce.edu.in/department/etc/placement/",
+        "url_2": "https://rvce.edu.in/department/etc/ete-placement/",
+        "jaccard_similarity": 1.0
+      }
+    ]
+  },
+  "content_length_statistics": {
+    "min_chars": 0,
+    "max_chars": 21874,
+    "mean_chars": 3144.57,
+    "median_chars": 2032.5,
+    "min_words": 0,
+    "max_words": 3132,
+    "mean_words": 475.28
+  },
+  "crawl_errors": [
+    {
+      "url": "https://rvce.edu.in/department/eim/eie_placement/https:/rvce.edu.in/department/eim/eie_placement/",
+      "final_url": "https://rvce.edu.in/department/eim/eie_placement/https:/rvce.edu.in/department/eim/eie_placement/",
+      "status_code": 404,
+      "error_type": "HTTPError",
+      "timestamp": "2026-10-12T14:27:56.948467+00:00"
+    }
+  ],
+  "validation_issues": []
+}

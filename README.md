@@ -1,429 +1,211 @@
-# Campus AI Assistant — Phase 1
-### ML Development & Reproducibility
+# Campus AI Assistant — Knowledge Acquisition & ML Pipeline
+### MLOps Engineering & Retrieval-Augmented Generation (RAG) Data Engine
 
-An AI-powered Campus Information Assistant designed to understand student queries and route them to the appropriate campus information source. The Phase 1 implementation focuses on developing and evaluating a reproducible **Campus Query Intent Classification** model as the core ML component.
-
----
-
-## 1. Problem Statement
-
-Students often need information about academics, administration, hostels, facilities, fees, events, placements, and campus experiences. These queries may be phrased in many different ways and may require information from different sources.
-
-The Phase 1 objective is to develop a supervised machine learning model that automatically identifies the **intent of a student's campus-related query**.
-
-### Example
-
-> "How do I apply for hostel accommodation?"
-
-**Predicted Intent:** `HOSTEL`
-
-> "When are the semester exams?"
-
-**Predicted Intent:** `ACADEMICS`
-
-> "How is the mess food?"
-
-**Predicted Intent:** `STUDENT_EXPERIENCE`
-
-The intent classifier will later act as the routing component of the complete Campus AI Assistant.
+An enterprise-grade, reproducible pipeline that acquires and curates publicly accessible campus information from the official college website ([RV College of Engineering](https://rvce.edu.in/)) for use in a Retrieval-Augmented Generation (RAG) system and Campus Query Intent Classification.
 
 ---
 
-## 2. Phase 1 Objective
+## 1. System Architecture
 
-The objectives of Phase 1 are:
+```text
+                                  Student Query
+                                       │
+                                       ▼
+                             Campus Intent Classifier
+                                       │
+                      ┌────────────────┴────────────────┐
+                      ▼                                 ▼
+            Official Campus RAG                 Community Sources
+         (rvce.edu.in Real Data)                        │
+                      │                                 │
+                      └────────────────┬────────────────┘
+                                       ▼
+                             Hybrid Retrieval / RAG
+                                       │
+                                       ▼
+                              Campus AI Assistant
+                                       │
+                                       ▼
+                             Source-Backed Response
+```
 
-- Acquire and document a labeled campus-query dataset.
-- Define and validate the query-intent taxonomy.
-- Perform exploratory data analysis.
-- Clean and preprocess the dataset.
-- Engineer text features using TF-IDF.
-- Develop baseline classification models.
-- Compare model performance using standard evaluation metrics.
-- Track experiments using MLflow.
-- Version the dataset using DVC.
-- Maintain the project using Git/GitHub.
-- Ensure the training process is reproducible.
+The pipeline implements the **Official Campus RAG Data Engine**, systematically discovering, retrieving, cleaning, validating, and cataloging official campus documents with full provenance and strict reproducibility.
 
 ---
 
-## 3. ML Task
+## 2. Real-Data Campus Knowledge Acquisition Pipeline
 
-### Task
+### 2.1 Target Website & Crawl Scope
+- **Target URL**: [https://rvce.edu.in/](https://rvce.edu.in/) (R.V. College of Engineering, Bengaluru)
+- **Robots Compliance**: Respects `robots.txt` (`https://rvce.edu.in/robots.txt`).
+- **Domain Confinement**: Strictly restricted to `rvce.edu.in` and approved subdomains.
+- **Priority Domains**:
+  - Academics, curriculum, syllabus, and academic calendar
+  - Departments (Computer Science, Mechanical, Electronics, MCA, AI/ML, etc.)
+  - Admissions, eligibility, and seat allocation
+  - Fee payment circulars and scholarship notices
+  - Examinations, regulations, and autonomous evaluation
+  - Placement records, recruiting companies, and internship statistics
+  - Campus facilities (Central Library, sports, laboratories, health centre)
+  - Publicly accessible PDF documents (circulars, policies, rank reports)
 
-**Multiclass Text Classification**
+---
 
-### Input
+## 3. Pipeline Modules & Architecture
 
-A natural-language student query.
+```text
+├── config.yaml                   # Central configuration (crawler, storage, cleaning, thresholds)
+├── requirements.txt              # Production dependency specifications
+├── .gitignore                    # Version control ignore rules
+├── src/
+│   ├── __init__.py               # Package initializer
+│   ├── crawler.py                # Priority BFS crawler, robots.txt, politeness, retry logic
+│   ├── extractors.py             # HTML/PDF parsing, boilerplate removal, heading preservation
+│   ├── cleaning.py               # Text normalization, deterministic IDs, verifiable topic rules
+│   ├── validation.py             # Schema checks, duplicate & near-duplicate detection, QA reporting
+│   └── build_dataset.py          # End-to-end pipeline orchestrator & CLI
+├── data/
+│   ├── raw/
+│   │   ├── campus_documents.jsonl    # Raw snapshot with preserved binaries / HTML
+│   │   └── collection_manifest.json  # Provenance manifest linking records to source URLs
+│   └── processed/
+│       └── campus_documents.jsonl    # Cleaned, validated, structured dataset for RAG
+└── reports/
+    └── data_collection_report.json   # Comprehensive QA metrics and crawl statistics
+```
 
-### Output
+### 3.1 Module Descriptions
+1. **[crawler.py](file:///c:/Users/lalan/Desktop/AI-Powered-Campus-Information-Assistant/src/crawler.py)**:
+   - Manages polite crawling with configurable delay, timeout, and max depth.
+   - Enforces `robots.txt` compliance using `RobotsManager`.
+   - Uses a priority queue (`heapq`) frontier prioritizing campus-critical endpoints (`department`, `admission`, `fee`, `exam`, `placement`).
+   - Dual-mode retrieval for HTML pages and binary PDF documents with exponential backoff retries.
+2. **[extractors.py](file:///c:/Users/lalan/Desktop/AI-Powered-Campus-Information-Assistant/src/extractors.py)**:
+   - Strips boilerplate elements (`<header>`, `<footer>`, `<nav>`, `<aside>`, `<script>`, `<style>`, popups, cookie banners).
+   - Preserves semantic document structure: markdown headings (`#`, `##`, `###`), bulleted lists, and tables.
+   - Multi-backend PDF parser using PyMuPDF (`fitz`) with `pypdf` fallback.
+   - Extracts page titles and HTTP/meta `Last-Modified` timestamps.
+3. **[cleaning.py](file:///c:/Users/lalan/Desktop/AI-Powered-Campus-Information-Assistant/src/cleaning.py)**:
+   - Normalizes unicode characters (NFKC) and cleans formatting artifacts.
+   - Eliminates layout-induced duplicate lines (e.g. Elementor responsive mobile/desktop blocks).
+   - Generates deterministic, verifiable document IDs (`doc_html_<hash>` / `doc_pdf_<hash>`).
+   - Assigns topic labels derived strictly from verifiable URL paths, headings, and metadata (no hallucinated labels; unknown values remain `null`).
+4. **[validation.py](file:///c:/Users/lalan/Desktop/AI-Powered-Campus-Information-Assistant/src/validation.py)**:
+   - Enforces record schema and data types.
+   - Exact duplicate detection (URL tracking and SHA-256 content hashing).
+   - Near-duplicate detection using Jaccard similarity over word 3-grams with configurable threshold (default `0.85`).
+   - Tracks crawl errors, unreadable formats, and extraction statuses (`SUCCESS`, `EMPTY`, `PARTIAL`, `FAILED`).
+5. **[build_dataset.py](file:///c:/Users/lalan/Desktop/AI-Powered-Campus-Information-Assistant/src/build_dataset.py)**:
+   - Coordinates end-to-end execution from crawling to report generation.
+   - Maintains `collection_manifest.json` for full dataset provenance.
 
-One of the predefined campus-information intent classes.
+---
 
-### Initial Intent Classes
+## 4. Dataset Schemas
+
+### 4.1 Processed Dataset (`data/processed/campus_documents.jsonl`)
+Each line contains a JSON object conforming strictly to:
+
+| Field | Type | Description |
+|---|---|---|
+| `document_id` | `str` | Deterministic unique ID (e.g., `doc_html_b9ceb436db517957`) |
+| `source_url` | `str` | Validated, canonical URL of the source page/document |
+| `title` | `str \| null` | Extracted page title or document title |
+| `content` | `str` | Cleaned textual content preserving headings and sections |
+| `source_type` | `str` | Document format: `"HTML"` or `"PDF"` |
+| `collected_at` | `str` | ISO 8601 UTC timestamp of acquisition |
+| `last_modified`| `str \| null` | Server/metadata last modification timestamp |
+| `topic` | `str \| null` | Verifiable topic classification (or `null` if unclassified) |
+| `extraction_status` | `str` | `"SUCCESS"`, `"EMPTY"`, `"PARTIAL"`, or `"FAILED"` |
+
+### 4.2 Raw Dataset & Provenance Manifest
+- **`data/raw/campus_documents.jsonl`**: Complete raw capture including full HTML text and base64-encoded PDF binaries.
+- **`data/raw/collection_manifest.json`**: Cryptographic provenance manifest linking each `document_id` to its source URL, extraction status, content length, and crawl configuration.
+
+---
+
+## 5. Execution & Reproducibility
+
+### 5.1 Environment Setup
+```bash
+# Clone the repository
+git clone https://github.com/hihihi-svg/AI-Powered-Campus-Information-Assistant.git
+cd AI-Powered-Campus-Information-Assistant
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### 5.2 Running the Pipeline
+Run the complete pipeline using `config.yaml`:
+```bash
+python -m src.build_dataset
+```
+
+Override crawl limits from the command line:
+```bash
+# Crawl 30 pages
+python -m src.build_dataset --max-pages 30
+
+# Specify custom configuration
+python -m src.build_dataset --config config.yaml --max-pages 60
+```
+
+---
+
+## 6. Actual Live Collection Statistics & Findings
+
+Results from running the pipeline against [https://rvce.edu.in/](https://rvce.edu.in/):
+
+| Metric | Result | Notes |
+|---|---|---|
+| **Total Documents Collected** | **60** | 45 HTML pages + 15 PDF documents |
+| **HTML Pages Retrieved** | **45** | Departments, admissions, circulars, fees, academics |
+| **PDF Documents Retrieved** | **15** | Official circulars, fee notifications, rankings |
+| **Successful Extractions** | **45** | Fully parsed structured content |
+| **Empty Extractions** | **15** | Scanned circular notices without embedded OCR layer |
+| **Failed Extractions** | **0** | Zero unhandled parser exceptions |
+| **Crawl Errors** | **1** | Tracked and logged in QA report |
+| **Exact Content Duplicates** | **3** | Detected URL aliases (e.g. `/academic_student_services/`) |
+| **Near-Duplicates (Jaccard $\ge 0.85$)** | **17** | Identified shared department academic planning templates |
+| **Mean Content Length** | **3,144 characters** | Preserving headings and bullet points |
+| **Mean Word Count** | **475 words** | Clean body text without navigational noise |
+
+### Topic Distribution
+- `departments`: 31 documents (CSE, ME, ECE, MCA, AI/ML, Chemistry, Chemical Eng, etc.)
+- `admissions`: 10 documents (Circulars, eligibility, management quota details)
+- `fees_finance`: 9 documents (Higher semester circulars, payment procedures)
+- `examinations_regulations`: 6 documents (Circulars, autonomous exam guidelines)
+- `academics`: 2 documents (Academic student services, curriculum)
+- `placements_careers`: 1 document (Placement & training overview)
+- `unclassified`: 1 document (Homepage hub)
+
+---
+
+## 7. Quality Assurance Report (`reports/data_collection_report.json`)
+
+The automated QA engine generates a complete inspection report with:
+- Collection summary and schema validation counts
+- Breakdown by document type and verifiable topic
+- Exact duplicate detection with source URLs
+- Near-duplicate pairs with Jaccard similarity metrics
+- Content length distribution (min, max, mean, median)
+- Crawl error breakdown and status codes
+
+---
+
+## 8. Downstream Intent Classification Roadmap
+
+The acquired campus documents serve as the authoritative knowledge base for RAG grounding. Student queries are routed via the Campus Query Intent Classifier:
 
 | Intent | Description |
 |---|---|
-| `ACADEMICS` | Courses, examinations, attendance, timetable, electives, academic regulations |
-| `ADMINISTRATION` | Certificates, applications, documents, offices, administrative procedures |
-| `HOSTEL` | Hostel accommodation, rules, timings, facilities and related queries |
-| `FACILITIES` | Library, laboratories, medical facilities, sports, Wi-Fi and campus infrastructure |
-| `FEES_FINANCE` | Tuition fees, hostel fees, scholarships and payment-related queries |
-| `EVENTS_CLUBS` | Clubs, events, workshops, hackathons and student activities |
-| `PLACEMENTS` | Placements, internships, recruitment and career-related campus information |
-| `STUDENT_EXPERIENCE` | Student opinions and experiences regarding campus life, food, facilities, faculty and similar topics |
-| `OUT_OF_SCOPE` | Queries unrelated to campus information |
-
----
-
-## 4. Dataset
-
-The primary ML dataset consists of labeled student-style campus queries.
-
-### Dataset Schema
-
-```text
-query,label
-"When are the semester exams?",ACADEMICS
-"How do I apply for hostel accommodation?",HOSTEL
-"Where is the central library?",FACILITIES
-"How can I obtain a bonafide certificate?",ADMINISTRATION
-"How much is the hostel fee?",FEES_FINANCE
-"How is the campus mess?",STUDENT_EXPERIENCE
-"How are placement opportunities?",PLACEMENTS
-"How do I join a student club?",EVENTS_CLUBS
-"What is the capital of France?",OUT_OF_SCOPE
-```
-
-### Target Dataset Size
-
-Initial target: **3,000–5,000 labeled queries**.
-
-The dataset will be maintained with reasonable class balance to prevent the classifier from being dominated by a single intent.
-
-### Data Sources
-
-The dataset may contain:
-
-1. Official campus information used to identify relevant information categories.
-2. Manually authored student-style queries.
-3. Permitted public community discussions used to identify realistic query patterns.
-4. Manually verified/synthetic variations of campus queries.
-
-Community-generated content will **not be treated as authoritative campus information**. It is used primarily to capture realistic student language and experiences.
-
----
-
-## 5. Data Processing Pipeline
-
-```text
-Raw Data
-   ↓
-Data Validation
-   ↓
-Cleaning
-   ↓
-Duplicate Detection
-   ↓
-Label Validation
-   ↓
-Train / Validation / Test Split
-   ↓
-Feature Engineering
-   ↓
-Model Training
-```
-
-Data processing will include:
-
-- Missing-value detection
-- Duplicate detection
-- Text normalization
-- Label validation
-- Query-length analysis
-- Class-distribution analysis
-- Train/validation/test splitting
-
----
-
-## 6. Exploratory Data Analysis
-
-The dataset will be analyzed for:
-
-- Total number of samples
-- Number of classes
-- Class distribution
-- Missing values
-- Duplicate queries
-- Query length distribution
-- Most common terms
-- Representative examples from each class
-- Potential class imbalance
-
-EDA will be documented in:
-
-```text
-notebooks/01_eda.ipynb
-```
-
----
-
-## 7. Feature Engineering
-
-The initial feature representation will use **TF-IDF (Term Frequency–Inverse Document Frequency)**.
-
-### Pipeline
-
-```text
-Student Query
-     ↓
-Text Preprocessing
-     ↓
-Tokenization
-     ↓
-Unigram + Bigram Features
-     ↓
-TF-IDF Vectorization
-     ↓
-Numerical Feature Matrix
-```
-
-The feature engineering stage will evaluate parameters such as:
-
-- `ngram_range`
-- `max_features`
-- `min_df`
-- TF-IDF normalization
-
----
-
-## 8. Baseline Models
-
-The following models will be evaluated:
-
-### Baseline 1 — Majority Class
-
-Predicts the most frequent class for every query.
-
-This establishes a minimum performance benchmark.
-
-### Baseline 2 — Logistic Regression
-
-```text
-TF-IDF → Logistic Regression → Intent
-```
-
-### Baseline 3 — Linear Support Vector Machine
-
-```text
-TF-IDF → Linear SVM → Intent
-```
-
-Additional classical models may be evaluated if required.
-
----
-
-## 9. Model Evaluation
-
-The models will be evaluated using:
-
-- Accuracy
-- Precision
-- Recall
-- **Macro F1-score**
-- Weighted F1-score
-- Confusion Matrix
-
-### Primary Metric
-
-**Macro F1-score** will be used as the primary metric because it gives equal importance to each intent class.
-
-The final model will be selected based on validation performance while considering generalization and class-wise performance.
-
----
-
-## 10. Experiment Tracking — MLflow
-
-MLflow will be used to track model development experiments.
-
-Each experiment will record:
-
-### Parameters
-
-- Model type
-- TF-IDF configuration
-- Hyperparameters
-- Random seed
-- Dataset version
-
-### Metrics
-
-- Accuracy
-- Precision
-- Recall
-- Macro F1
-- Weighted F1
-
-### Artifacts
-
-- Trained model
-- Confusion matrix
-- Evaluation reports
-- Feature configuration
-
-Example experiment:
-
-```text
-Experiment: campus_query_classification
-
-Run 1
-TF-IDF + Logistic Regression
-
-Run 2
-TF-IDF + Linear SVM
-
-Run 3
-Alternative baseline
-```
-
----
-
-## 11. Dataset Versioning — DVC
-
-DVC will be used to version the dataset independently from Git.
-
-```text
-Dataset v1
-    ↓
-Model Experiment v1
-
-Dataset v2
-    ↓
-Model Experiment v2
-```
-
-This allows each model experiment to be associated with a specific dataset version and ensures reproducibility.
-
----
-
-## 12. Reproducibility
-
-The project will maintain reproducibility through:
-
-- Git version control
-- DVC dataset versioning
-- MLflow experiment tracking
-- Fixed random seeds
-- Dependency versioning
-- Configuration files
-- Documented preprocessing
-- Versioned model artifacts
-
-A future developer should be able to reproduce the Phase 1 experiment using the repository and the corresponding dataset version.
-
----
-
-## 13. Repository Structure
-
-```text
-campus-ai-assistant/
-│
-├── data/
-│   ├── raw/
-│   └── processed/
-│
-├── notebooks/
-│   └── 01_eda.ipynb
-│
-├── src/
-│   ├── data/
-│   ├── features/
-│   ├── models/
-│   └── evaluation/
-│
-├── models/
-│
-├── reports/
-│
-├── tests/
-│
-├── params.yaml
-├── dvc.yaml
-├── requirements.txt
-├── README.md
-└── .gitignore
-```
-
----
-
-## 14. Phase 1 Deliverables
-
-By the end of Phase 1, the repository should contain:
-
-- [ ] Approved dataset definition
-- [ ] Labeled campus-query dataset
-- [ ] Dataset documentation
-- [ ] Data validation and preprocessing
-- [ ] Exploratory Data Analysis
-- [ ] Feature engineering pipeline
-- [ ] Majority-class baseline
-- [ ] Logistic Regression baseline
-- [ ] Linear SVM baseline
-- [ ] Initial model evaluation
-- [ ] Confusion matrix
-- [ ] Git repository with contribution history
-- [ ] DVC dataset versioning
-- [ ] MLflow experiment tracking
-- [ ] Reproducible training configuration
-- [ ] Phase 1 results documented in README/report
-
----
-
-## 15. Phase 1 Scope Boundary
-
-Phase 1 focuses specifically on:
-
-> **Dataset → EDA → Feature Engineering → Baseline Models → Evaluation → Git → DVC → MLflow → Reproducibility**
-
-The following components are outside the primary Phase 1 scope and can be developed in later phases:
-
-- Production conversational interface
-- RAG pipeline
-- Community sentiment analysis
-- Advanced semantic retrieval
-- LLM integration
-- Docker containerization
-- CI/CD
-- Deployment
-- Model monitoring
-- Continuous retraining
-
----
-
-## 16. Future System
-
-The Phase 1 intent classifier will become one component of the complete Campus AI Assistant:
-
-```text
-                 Student Query
-                      │
-                      ▼
-            Campus Intent Classifier
-                      │
-             ┌────────┴────────┐
-             ▼                 ▼
-      Official Sources     Community Sources
-             │                 │
-             └────────┬────────┘
-                      ▼
-             Retrieval / RAG
-                      │
-                      ▼
-              Campus AI Assistant
-                      │
-                      ▼
-             Source-backed Answer
-```
-
-Phase 1 therefore establishes the **ML foundation and reproducible experimentation pipeline** for the complete system.
+| `ACADEMICS` | Courses, examinations, attendance, timetable, electives, regulations |
+| `ADMINISTRATION` | Certificates, applications, documents, administrative procedures |
+| `HOSTEL` | Accommodation, rules, timings, mess facilities |
+| `FACILITIES` | Library, laboratories, sports, campus infrastructure |
+| `FEES_FINANCE` | Tuition fees, scholarships, payment circulars |
+| `EVENTS_CLUBS` | Student clubs, technical chapters, cultural teams |
+| `PLACEMENTS` | Campus recruitment, internship statistics, eligibility |
+| `STUDENT_EXPERIENCE` | Campus life, food, peer guidance |
+| `OUT_OF_SCOPE` | Queries unrelated to campus services |
