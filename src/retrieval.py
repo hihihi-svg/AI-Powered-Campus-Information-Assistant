@@ -328,12 +328,25 @@ class TFIDFRetriever:
         top_indices = np.argsort(-similarities)[: top_k * 2]  # fetch extra for threshold filtering
 
         results = []
+        seen_keys = set()  # This is our memory to track duplicates
+
         for idx in top_indices:
             score = float(similarities[idx])
             if score < score_threshold:
                 continue
 
             chunk = self.chunks[idx]
+            
+            # Create a unique key using the document's URL and heading
+            unique_key = (chunk.source_url, chunk.heading)
+            
+            # If we already added this section, skip it!
+            if unique_key in seen_keys:
+                continue
+                
+            # Otherwise, remember it and add it to our results
+            seen_keys.add(unique_key)
+
             results.append({
                 "chunk_id": chunk.chunk_id,
                 "text": chunk.text,

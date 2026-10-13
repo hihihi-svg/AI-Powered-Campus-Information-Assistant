@@ -14,6 +14,9 @@ Extracts:
 import io
 import logging
 import re
+import pytesseract
+from pdf2image import convert_from_bytes
+HAS_OCR = True
 from typing import Any, Dict, Optional, Tuple
 
 from bs4 import BeautifulSoup, Comment
@@ -260,6 +263,21 @@ class PDFExtractor:
                         extracted_pages.append(text.strip())
             except Exception as e:
                 logger.warning(f"pypdf extraction failed on {url}: {e}")
+
+        # Fallback 3: OCR for scanned PDFs (Images)
+        if not extracted_pages and HAS_OCR:
+            try:
+                # Tell Windows where to find Tesseract if needed (default install path)
+                pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+                
+                # Convert PDF bytes to images
+                images = convert_from_bytes(raw_bytes, poppler_path=r"C:\poppler\Library\bin")
+                for page_num, image in enumerate(images):
+                    text = pytesseract.image_to_string(image)
+                    if text and text.strip():
+                        extracted_pages.append(text.strip())
+            except Exception as e:
+                raise Exception(f"OCR ERROR: {e}")
 
         # Derive title from filename or first line if title is still missing
         if not title:
