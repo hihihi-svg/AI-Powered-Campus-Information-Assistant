@@ -129,7 +129,7 @@ class DocumentChunk:
 def chunk_document(
     record: Dict[str, Any],
     max_chunk_chars: int = 1200,
-    min_chunk_chars: int = 60,
+    min_chunk_chars: int = 35,
     overlap_chars: int = 150,
 ) -> List[DocumentChunk]:
     """

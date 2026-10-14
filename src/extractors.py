@@ -293,11 +293,14 @@ class PDFExtractor:
                 first_lines = extracted_pages[0].splitlines()
                 for line in first_lines:
                     line_clean = line.strip()
+                    if "page break" in line_clean.lower() or line_clean.startswith("---"):
+                        continue
                     if len(line_clean) > 5 and len(line_clean) < 120:
                         title = line_clean
                         break
             if not title and url:
                 filename = url.split("/")[-1].replace(".pdf", "").replace("-", " ").replace("_", " ")
+                filename = re.sub(r"^\d+\s*", "", filename)
                 title = filename.title()
 
         content = "\n\n--- Page Break ---\n\n".join(extracted_pages).strip()

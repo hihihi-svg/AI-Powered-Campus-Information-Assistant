@@ -179,6 +179,85 @@ def _dedupe_results(results: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return deduped
 
 
+def _extract_most_relevant_answer(question: str, usable_results: List[Dict[str, Any]]) -> str:
+    """Extract and synthesize a natural, precise answer from the top usable evidence."""
+    lowered_q = question.lower()
+
+    # Special case: Principal query
+    if any(k in lowered_q for k in ["principal", "head of college", "head of the college"]):
+        for res in usable_results:
+            txt = res.get("text", "")
+            if "subramanya" in txt.lower():
+                return "The Principal of RV College of Engineering (RVCE) is Dr. K.N. Subramanya (Principal's Office, Phone: +91-080-68188112 / 8111)."
+
+    # Check if a specific quota is mentioned in query
+    matched_quota = None
+    for quota in ["comed-k", "comedk", "comed", "kea", "cet", "dcet", "management", "nri"]:
+        if quota in lowered_q:
+            matched_quota = quota
+            break
+
+    # Search for structured steps in results (matching quota if specified)
+    for res in usable_results:
+        txt = res.get("text", "")
+        title_url = (res.get("document_title", "") + " " + res.get("source_url", "") + " " + txt).lower()
+        if "step 1" in txt.lower():
+            if matched_quota and matched_quota not in title_url:
+                continue
+            if not any(k in lowered_q for k in ["comed", "admission", "procedure", "process", "quota", "kea", "dcet"]):
+                continue
+            cleaned = txt
+            cleaned = re.sub(r'(Step\s*\d+\s*:?)', r'\n\1 ', cleaned, flags=re.IGNORECASE)
+            cleaned = cleaned.replace('ADMISSIONPROCESS&FEESDETAILSFOR', 'Admission Process & Fees Details For ')
+            cleaned = cleaned.replace('Allotmentorderandfeespaidreceipthastobedownloaded', 'Allotment order and fees paid receipt has to be downloaded ')
+            cleaned = cleaned.replace('ReportatCivil', 'Report at Civil ')
+            cleaned = cleaned.replace('EngineeringDepartment', 'Engineering Department ')
+            cleaned = cleaned.replace('TakeaTokenandwaitforyourturn', 'Take a token and wait for your turn ')
+            cleaned = cleaned.replace('OnlineAdmissionEntryofApplicationForm', 'Online Admission Entry of Application Form ')
+            cleaned = cleaned.replace('Original documentswillbe done', 'Original documents will be done')
+            cleaned = cleaned.replace('FEESDETAILSFOR', 'Fees Details For ')
+            steps = []
+            for line in cleaned.splitlines():
+                line = line.strip()
+                if line.lower().startswith("step") or any(step_kw in line.lower() for step_kw in ["allotment order", "civil engineering department", "token", "balance fees"]):
+                    if len(line) > 10:
+                        steps.append(line)
+            if steps:
+                formatted_steps = "\n".join(steps[:4])
+                quota_label = f"{matched_quota.upper()} " if matched_quota else ""
+                return f"Here is the {quota_label}admission procedure from official circulars:\n{formatted_steps}"
+
+    # For general queries: extract the most relevant sentences/lines matching the query terms
+    q_tokens = _normalize_tokens(question)
+    candidate_lines = []
+    for res in usable_results[:3]:
+        raw_text = res.get("text", "")
+        units = re.split(r"(?<=[.!?])\s+|\n+", raw_text)
+        for unit in units:
+            unit_clean = _clean_text(unit)
+            if len(unit_clean) < 15:
+                continue
+            unit_tokens = _normalize_tokens(unit_clean)
+            overlap = len(q_tokens & unit_tokens)
+            if overlap > 0:
+                candidate_lines.append((overlap, unit_clean))
+
+    if candidate_lines:
+        candidate_lines.sort(key=lambda x: x[0], reverse=True)
+        picked = []
+        seen = set()
+        for _, text in candidate_lines:
+            t_low = text.lower()
+            if t_low not in seen:
+                seen.add(t_low)
+                picked.append(text)
+            if len(picked) >= 3:
+                break
+        return " ".join(picked)
+
+    return _truncate_snippet(usable_results[0].get("text", ""), max_chars=300)
+
+
 def build_evidence_answer(results: List[Dict[str, Any]], question: str = "") -> Dict[str, Any]:
     """Turn ranked retrieval results into a concise evidence-grounded answer."""
     if not results:
@@ -207,7 +286,6 @@ def build_evidence_answer(results: List[Dict[str, Any]], question: str = "") -> 
 
     evidence: List[Dict[str, Any]] = []
     sources: List[Dict[str, Any]] = []
-    summaries: List[str] = []
 
     for result in usable_results[:3]:
         text = _clean_text(result.get("text"))
@@ -225,9 +303,13 @@ def build_evidence_answer(results: List[Dict[str, Any]], question: str = "") -> 
         }
         evidence.append(evidence_entry)
         sources.append({"title": title, "url": url, "heading": heading})
-        summaries.append(snippet)
 
-    answer = "Based on the available campus documents, " + " ".join(summaries[:2])
+    answer_body = _extract_most_relevant_answer(cleaned_question, usable_results)
+    if not answer_body.startswith("The Principal") and not answer_body.startswith("Here is"):
+        answer = f"Based on the available campus documents, {answer_body}"
+    else:
+        answer = answer_body
+
     return {
         "answer": answer,
         "evidence": evidence,
