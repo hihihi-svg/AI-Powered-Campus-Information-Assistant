@@ -1,0 +1,57 @@
+{
+  "config": {
+    "benchmark_path": "data\\queries\\campus_queries.csv",
+    "dataset_path": "data\\processed\\campus_documents.jsonl",
+    "top_k": 2,
+    "score_threshold": 0.05,
+    "retriever_type": "tfidf",
+    "retrieval_backend": "TFIDFRetriever",
+    "rerank": false,
+    "fusion_method": "linear",
+    "semantic_weight": 0.5,
+    "tfidf_weight": 0.5,
+    "sentence_transformer_model": "none",
+    "cross_encoder_model": "none",
+    "embedding_dimension": 0,
+    "similarity_metric": "cosine",
+    "benchmark_has_relevance_labels": false,
+    "evaluation_mode": "retrieval_hit_proxy",
+    "execution_device": "cpu"
+  },
+  "metrics": {
+    "queries_evaluated": 2,
+    "queries_with_results": 2,
+    "queries_without_results": 0,
+    "retrieval_coverage": 1.0,
+    "relevance_rate": 1.0,
+    "average_best_score": 0.1658,
+    "average_retrieved_results": 2.0,
+    "benchmark_has_relevance_labels": false,
+    "benchmark_note": "The benchmark CSV has query text and intent labels only; no gold relevance labels are available. The 'retrieval_coverage' below is a retrieval-hit proxy based on whether at least one returned passage passed the configured score threshold.",
+    "evaluation_duration_seconds": 0.0058
+  },
+  "queries": [
+    {
+      "query_id": "Q001",
+      "intent": "admissions",
+      "split_group": "train",
+      "query_text": "What is the procedure for B.E. admission through COMEDK quota?",
+      "result_count": 2,
+      "has_result": true,
+      "max_score": 0.2426,
+      "top_result_title": "Admission Circulars",
+      "top_result_url": "https://rvce.edu.in/admission-circulars/"
+    },
+    {
+      "query_id": "Q002",
+      "intent": "admissions",
+      "split_group": "train",
+      "query_text": "Can diploma students apply for lateral entry into 2nd year engineering?",
+      "result_count": 2,
+      "has_result": true,
+      "max_score": 0.0889,
+      "top_result_title": "Admission Circulars",
+      "top_result_url": "https://rvce.edu.in/admission-circulars/"
+    }
+  ]
+}

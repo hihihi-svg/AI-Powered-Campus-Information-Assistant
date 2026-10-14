@@ -1,0 +1,9 @@
+{
+  "benchmark_path": "data\\queries\\campus_queries.csv",
+  "dataset_path": "data\\processed\\campus_documents.jsonl",
+  "top_k": 2,
+  "score_threshold": 0.05,
+  "retrieval_backend": "TFIDFRetriever",
+  "benchmark_has_relevance_labels": false,
+  "evaluation_mode": "retrieval_hit_proxy"
+}

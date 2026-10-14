@@ -1,0 +1,5 @@
+outs:
+- md5: b0e3f78c98edefea1d29149d15bac13d
+  size: 30700
+  hash: md5
+  path: collection_manifest.json

@@ -1,0 +1,44 @@
+{
+  "config": {
+    "benchmark_path": "data\\queries\\campus_queries.csv",
+    "dataset_path": "data\\processed\\campus_documents.jsonl",
+    "top_k": 2,
+    "score_threshold": 0.05,
+    "retrieval_backend": "TFIDFRetriever",
+    "benchmark_has_relevance_labels": false,
+    "evaluation_mode": "retrieval_hit_proxy"
+  },
+  "metrics": {
+    "queries_evaluated": 2,
+    "queries_with_results": 2,
+    "queries_without_results": 0,
+    "relevance_rate": 1.0,
+    "average_best_score": 0.1658,
+    "benchmark_has_relevance_labels": false,
+    "benchmark_note": "The benchmark CSV has query text and intent labels only; no gold relevance labels are available. The 'relevance_rate' below is a retrieval-hit proxy based on whether at least one returned passage passed the configured score threshold."
+  },
+  "queries": [
+    {
+      "query_id": "Q001",
+      "intent": "admissions",
+      "split_group": "train",
+      "query_text": "What is the procedure for B.E. admission through COMEDK quota?",
+      "result_count": 2,
+      "has_result": true,
+      "max_score": 0.2426,
+      "top_result_title": "Admission Circulars",
+      "top_result_url": "https://rvce.edu.in/admission-circulars/"
+    },
+    {
+      "query_id": "Q002",
+      "intent": "admissions",
+      "split_group": "train",
+      "query_text": "Can diploma students apply for lateral entry into 2nd year engineering?",
+      "result_count": 2,
+      "has_result": true,
+      "max_score": 0.0889,
+      "top_result_title": "Admission Circulars",
+      "top_result_url": "https://rvce.edu.in/admission-circulars/"
+    }
+  ]
+}

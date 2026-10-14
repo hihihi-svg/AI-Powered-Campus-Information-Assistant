@@ -1,0 +1,5 @@
+outs:
+- md5: 9d1e2e74860ed37c4a68bf365af0a2e1
+  size: 305986
+  hash: md5
+  path: campus_documents.jsonl

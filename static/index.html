@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RVCE Campus Assistant</title>
+    <meta
+      name="description"
+      content="RVCE Campus Assistant answers questions using the available campus documents."
+    />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <div class="brand-mark">RVCE</div>
+          <div>
+            <p class="eyebrow">Campus Information Assistant</p>
+            <h1>RVCE Campus Assistant</h1>
+          </div>
+        </div>
+      </header>
+
+      <main class="app-card">
+        <section class="intro-panel">
+          <p>
+            Ask about admissions, fees, procedures, and campus information using the
+            available campus documents.
+          </p>
+        </section>
+
+        <section class="suggestion-panel" aria-label="Suggested questions">
+          <p class="section-label">Suggested questions</p>
+          <div class="suggestions" id="suggestions">
+            <button type="button" class="suggestion-button" data-question="What is the procedure for COMEDK rank card?">
+              What is the procedure for COMEDK rank card?
+            </button>
+            <button type="button" class="suggestion-button" data-question="What are the fee details for admission?">
+              What are the fee details for admission?
+            </button>
+            <button type="button" class="suggestion-button" data-question="What documents are required for PGCET admissions?">
+              What documents are required for PGCET admissions?
+            </button>
+          </div>
+        </section>
+
+        <section class="chat-panel" aria-live="polite">
+          <div id="chat-messages" class="chat-messages" role="log" aria-live="polite" aria-label="Assistant conversation">
+            <div class="message assistant">
+              <div class="message-bubble">
+                <p>Hello! Ask me a question about RVCE admissions, procedures, or campus information.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <form id="ask-form" class="ask-form" novalidate>
+          <div class="strategy-row">
+            <label for="strategy-select" class="strategy-label">Retrieval Strategy:</label>
+            <select id="strategy-select" name="strategy" class="strategy-select" aria-label="Select retrieval strategy">
+              <option value="tfidf" selected>TF-IDF (Default Baseline)</option>
+              <option value="semantic">Dense Semantic (all-MiniLM-L6-v2)</option>
+              <option value="hybrid">Hybrid (TF-IDF + Dense Linear)</option>
+              <option value="hybrid_rerank">Hybrid + Cross-Encoder Rerank</option>
+            </select>
+          </div>
+          <label class="visually-hidden" for="question-input">Ask a question</label>
+          <textarea
+            id="question-input"
+            name="question"
+            rows="3"
+            placeholder="Type your question here..."
+            aria-label="Type your question here"
+          ></textarea>
+          <div class="actions-row">
+            <span id="loading-indicator" class="loading-indicator" style="display: none;">
+              <span class="spinner" aria-hidden="true"></span>
+              <span>Searching campus knowledge base...</span>
+            </span>
+            <button id="ask-button" type="submit" class="primary-button">Ask</button>
+            <button id="clear-button" type="button" class="secondary-button">
+              Clear Chat
+            </button>
+          </div>
+        </form>
+      </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

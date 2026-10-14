@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 retrieval.py - TF-IDF Retrieval Baseline for Campus Knowledge Base.
 
@@ -14,6 +16,7 @@ import json
 import logging
 import os
 import re
+import time
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -22,6 +25,88 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 logger = logging.getLogger("campus_pipeline.retrieval")
+
+DEFAULT_SEMANTIC_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L6-v2"
+_SEMANTIC_MODEL_CACHE: Dict[str, Any] = {}
+_CROSS_ENCODER_CACHE: Dict[str, Any] = {}
+
+
+def _is_model_cached_locally(model_name: str) -> bool:
+    """Check the standard Hugging Face cache directory for a usable local copy."""
+    cache_root = os.path.expanduser("~/.cache/huggingface/hub")
+    if not os.path.isdir(cache_root):
+        return False
+
+    normalized_name = model_name.replace("/", "--")
+    marker_files = {"config.json", "sentence_bert_config.json", "tokenizer_config.json", "model.safetensors", "pytorch_model.bin"}
+    for entry in os.listdir(cache_root):
+        if not entry.startswith(f"models--{normalized_name}"):
+            continue
+        candidate_dir = os.path.join(cache_root, entry)
+        if not os.path.isdir(candidate_dir):
+            continue
+        for root, _, files in os.walk(candidate_dir):
+            if set(files) & marker_files:
+                return True
+    return False
+
+
+def _ensure_model_is_cached(model_name: str) -> None:
+    """Validate that the model is already cached locally before using it."""
+    if not _is_model_cached_locally(model_name):
+        raise RuntimeError(f"Local model cache missing for {model_name}")
+
+
+def _load_sentence_transformer(
+    model_name: str = DEFAULT_SEMANTIC_MODEL,
+    device: str = "cpu",
+    local_files_only: bool = True,
+) -> Any:
+    """Load a single SentenceTransformer instance and cache it for reuse.
+
+    The default local-only mode prevents accidental hangs when the model has not
+    been downloaded yet. If the cached model is missing, the caller should fail
+    gracefully and log a clear warning instead of silently pretending retrieval
+    succeeded.
+    """
+    from sentence_transformers import SentenceTransformer
+
+    _ensure_model_is_cached(model_name)
+    cache_key = f"{model_name}:{device}:{local_files_only}"
+    if cache_key not in _SEMANTIC_MODEL_CACHE:
+        model = SentenceTransformer(model_name, device=device, local_files_only=local_files_only)
+        _SEMANTIC_MODEL_CACHE[cache_key] = model
+    return _SEMANTIC_MODEL_CACHE[cache_key]
+
+
+def _load_cross_encoder(
+    model_name: str = DEFAULT_CROSS_ENCODER_MODEL,
+    device: str = "cpu",
+    local_files_only: bool = True,
+) -> Any:
+    """Load a single CrossEncoder instance and cache it for reuse."""
+    from sentence_transformers import CrossEncoder
+
+    _ensure_model_is_cached(model_name)
+    cache_key = f"{model_name}:{device}:{local_files_only}"
+    if cache_key not in _CROSS_ENCODER_CACHE:
+        model = CrossEncoder(model_name, device=device, local_files_only=local_files_only)
+        _CROSS_ENCODER_CACHE[cache_key] = model
+    return _CROSS_ENCODER_CACHE[cache_key]
+
+
+def _index_record_chunks(records: List[Dict[str, Any]]) -> List[DocumentChunk]:
+    """Shared record-to-chunk conversion used by TF-IDF and semantic indexes."""
+    all_chunks: List[DocumentChunk] = []
+    for r in records:
+        if r.get("extraction_status") == "EMPTY":
+            continue
+        content = r.get("content", "")
+        if not content or not content.strip():
+            continue
+        all_chunks.extend(chunk_document(r))
+    return all_chunks
 
 
 @dataclass
@@ -107,8 +192,8 @@ def chunk_document(
         "academic student services",  # sidebar nav menu (Fee & Notifications / Scheme & Syllabus / Placements)
         "address:",                   # footer address widget
         "address",                    # alternate form
-        "principal\u2019s office",    # right-column principal card (unicode right-quote)
-        "principal's office",         # straight-quote variant
+        # NOTE: Principal office cards contain legitimate answer-bearing text and
+        # must remain searchable for questions about the current principal.
         "contact us",
         "about rvce",
         "about college",
@@ -240,17 +325,7 @@ class TFIDFRetriever:
         Chunk and index records with non-empty content.
         Skips records flagged as EMPTY or with empty content.
         """
-        all_chunks: List[DocumentChunk] = []
-        for r in records:
-            # Enforce rule: load only records with non-empty extracted content
-            if r.get("extraction_status") == "EMPTY":
-                continue
-            content = r.get("content", "")
-            if not content or not content.strip():
-                continue
-
-            doc_chunks = chunk_document(r)
-            all_chunks.extend(doc_chunks)
+        all_chunks = _index_record_chunks(records)
 
         if not all_chunks:
             logger.warning("No valid non-empty chunks found to index.")
@@ -281,6 +356,35 @@ class TFIDFRetriever:
 
         return self.index_records(records)
 
+    @staticmethod
+    def _normalize_dedupe_text(value: Any) -> str:
+        """Normalize candidate text for stable deduplication."""
+        raw = str(value or "").strip().lower()
+        raw = re.sub(r"[\W_]+", " ", raw)
+        return re.sub(r"\s+", " ", raw).strip()
+
+    @classmethod
+    def _dedup_key_for_result(cls, result: Dict[str, Any]) -> Tuple[str, str, str]:
+        """Return a stable deduplication key for a ranked result.
+
+        It includes document identity, heading, and a normalized text signature so
+        repeated copies of the exact same passage are suppressed without removing
+        distinct passages from the same document.
+        """
+        document_id = (
+            result.get("document_id")
+            or result.get("source_url")
+            or result.get("document_title")
+            or "unknown_document"
+        )
+        heading = result.get("heading") or "unknown_heading"
+        text = result.get("text") or result.get("searchable_text") or ""
+        return (
+            str(document_id).strip() or "unknown_document",
+            str(heading).strip() or "unknown_heading",
+            cls._normalize_dedupe_text(text),
+        )
+
     def retrieve(
         self,
         query: str,
@@ -292,6 +396,7 @@ class TFIDFRetriever:
 
         Returns list of dicts with:
         - chunk_id
+        - document_id
         - text
         - document_title
         - source_url
@@ -324,39 +429,445 @@ class TFIDFRetriever:
         if np.all(similarities <= 0.0):
             return []
 
-        # Get top-k indices sorted descending
-        top_indices = np.argsort(-similarities)[: top_k * 2]  # fetch extra for threshold filtering
+        # Consider all ranked candidates so deduplication can suppress duplicates
+        # without reducing the number of genuinely distinct passages returned.
+        top_indices = np.argsort(-similarities)
 
-        results = []
+        ranked_results = []
         for idx in top_indices:
             score = float(similarities[idx])
             if score < score_threshold:
                 continue
 
             chunk = self.chunks[idx]
-            results.append({
+            result = {
                 "chunk_id": chunk.chunk_id,
+                "document_id": str(chunk.document_id or chunk.source_url or chunk.document_title or "unknown_document").strip() or "unknown_document",
                 "text": chunk.text,
-                "document_title": chunk.document_title,
-                "source_url": chunk.source_url,
-                "heading": chunk.heading,
+                "document_title": chunk.document_title or "",
+                "source_url": chunk.source_url or "",
+                "heading": chunk.heading or "unknown_heading",
                 "topic": chunk.topic,
                 "last_modified": chunk.last_modified,
                 "relevance_score": round(score, 4),
-            })
-            if len(results) >= top_k:
+            }
+            ranked_results.append(result)
+
+        deduplicated_results = []
+        seen_keys = set()
+        for result in ranked_results:
+            key = self._dedup_key_for_result(result)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            deduplicated_results.append(result)
+            if len(deduplicated_results) >= top_k:
                 break
 
-        return results
+        return deduplicated_results
+
+
+class SemanticRetriever:
+    """Sentence-transformer retrieval over the same chunked corpus."""
+
+    def __init__(
+        self,
+        model_name: str = DEFAULT_SEMANTIC_MODEL,
+        device: str = "cpu",
+        max_candidates: int = 200,
+    ):
+        self.model_name = model_name
+        self.device = device
+        self.model = None
+        self.model_error: Optional[str] = None
+        self.chunks: List[DocumentChunk] = []
+        self.document_embeddings: Optional[np.ndarray] = None
+        self.is_indexed = False
+        self.max_candidates = max_candidates
+
+    def _load_model(self) -> None:
+        if self.model is not None:
+            return
+        if not _is_model_cached_locally(self.model_name):
+            self.model_error = f"Model unavailable: {self.model_name} (missing local cache)"
+            logger.warning(self.model_error)
+            return
+        try:
+            self.model = _load_sentence_transformer(self.model_name, device=self.device, local_files_only=True)
+            self.model_error = None
+        except Exception as exc:  # pragma: no cover - exercised by targeted tests
+            self.model_error = f"Model unavailable: {self.model_name} ({exc})"
+            logger.warning(self.model_error)
+
+    def index_records(self, records: List[Dict[str, Any]]) -> int:
+        self.chunks = _index_record_chunks(records)
+        self.document_embeddings = None
+        self.is_indexed = bool(self.chunks)
+        return len(self.chunks)
+
+    def load_and_index(self, dataset_path: str = "data/processed/campus_documents.jsonl") -> int:
+        """Load JSONL dataset and index chunks for semantic retrieval."""
+        records = _load_dataset_records(dataset_path)
+        return self.index_records(records)
+
+    def encode_corpus(self, batch_size: int = 32) -> Optional[np.ndarray]:
+        """Encode all indexed chunks once and cache embeddings in memory."""
+        if self.document_embeddings is not None:
+            return self.document_embeddings
+        if not self.chunks:
+            return None
+
+        self._load_model()
+        if self.model_error or self.model is None:
+            return None
+
+        try:
+            texts = [chunk.searchable_text or chunk.text for chunk in self.chunks]
+            self.document_embeddings = self.model.encode(
+                texts,
+                batch_size=batch_size,
+                normalize_embeddings=True,
+                convert_to_numpy=True,
+                device=self.device,
+                show_progress_bar=False,
+            )
+            return self.document_embeddings
+        except Exception as exc:  # pragma: no cover - exercised by targeted tests
+            self.model_error = f"Embedding failed for {self.model_name}: {exc}"
+            logger.warning(self.model_error)
+            return None
+
+    def retrieve(
+        self,
+        query: str,
+        top_k: int = 5,
+        score_threshold: float = 0.0,
+    ) -> List[Dict[str, Any]]:
+        if not query or not isinstance(query, str) or not query.strip():
+            return []
+        if not self.is_indexed or not self.chunks:
+            return []
+
+        doc_embeddings = self.encode_corpus()
+        if doc_embeddings is None:
+            logger.warning("Semantic retrieval is unavailable: %s", self.model_error or "unknown model error")
+            return []
+
+        try:
+            query_embedding = self.model.encode(
+                [query],
+                normalize_embeddings=True,
+                convert_to_numpy=True,
+                device=self.device,
+            )
+        except Exception as exc:  # pragma: no cover - exercised by targeted tests
+            self.model_error = f"Query embedding failed for {self.model_name}: {exc}"
+            logger.warning(self.model_error)
+            return []
+
+        similarities = cosine_similarity(query_embedding, doc_embeddings).flatten()
+        if np.all(similarities <= 0.0):
+            return []
+
+        ranked_indices = np.argsort(-similarities)
+        ranked_results: List[Dict[str, Any]] = []
+        for idx in ranked_indices[: self.max_candidates]:
+            score = float(similarities[idx])
+            if score < score_threshold:
+                continue
+            chunk = self.chunks[int(idx)]
+            ranked_results.append(
+                {
+                    "chunk_id": chunk.chunk_id,
+                    "document_id": str(chunk.document_id or chunk.source_url or chunk.document_title or "unknown_document").strip() or "unknown_document",
+                    "text": chunk.text,
+                    "document_title": chunk.document_title or "",
+                    "source_url": chunk.source_url or "",
+                    "heading": chunk.heading or "unknown_heading",
+                    "topic": chunk.topic,
+                    "last_modified": chunk.last_modified,
+                    "relevance_score": round(score, 4),
+                }
+            )
+
+        deduplicated_results: List[Dict[str, Any]] = []
+        seen_keys = set()
+        for result in ranked_results:
+            key = TFIDFRetriever._dedup_key_for_result(result)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            deduplicated_results.append(result)
+            if len(deduplicated_results) >= top_k:
+                break
+        return deduplicated_results
+
+
+class CrossEncoderReranker:
+    """Cross-encoder rerank of a candidate set using a pointwise relevance score."""
+
+    def __init__(self, model_name: str = DEFAULT_CROSS_ENCODER_MODEL, device: str = "cpu"):
+        self.model_name = model_name
+        self.device = device
+        self.model = None
+        self.model_error: Optional[str] = None
+
+    def _load_model(self) -> None:
+        if self.model is not None:
+            return
+        if not _is_model_cached_locally(self.model_name):
+            self.model_error = f"Reranker unavailable: {self.model_name} (missing local cache)"
+            logger.warning(self.model_error)
+            return
+        try:
+            self.model = _load_cross_encoder(self.model_name, device=self.device, local_files_only=True)
+            self.model_error = None
+        except Exception as exc:  # pragma: no cover - exercised by targeted tests
+            self.model_error = f"Reranker unavailable: {self.model_name} ({exc})"
+            logger.warning(self.model_error)
+
+    def rerank(self, query: str, candidates: List[Dict[str, Any]], max_candidates: int = 15) -> List[Dict[str, Any]]:
+        """Rerank candidate passages against query while strictly preserving metadata."""
+        if not query or not candidates:
+            return list(candidates)
+
+        self._load_model()
+        if self.model_error or self.model is None:
+            logger.warning("Cross-encoder reranking is unavailable: %s", self.model_error or "unknown model error")
+            return list(candidates)
+
+        rerank_pool = candidates[:max_candidates]
+        tail = candidates[max_candidates:]
+
+        try:
+            pairs = [(query, c.get("text") or "") for c in rerank_pool]
+            scores = self.model.predict(pairs)
+        except Exception as exc:  # pragma: no cover - exercised by targeted tests
+            self.model_error = f"Reranking failed for {self.model_name}: {exc}"
+            logger.warning(self.model_error)
+            return list(candidates)
+
+        reranked: List[Dict[str, Any]] = []
+        for candidate, score in zip(rerank_pool, scores):
+            item = dict(candidate)
+            item["relevance_score"] = round(float(score), 4)
+            item["reranked"] = True
+            reranked.append(item)
+        reranked.sort(key=lambda item: float(item.get("relevance_score", 0.0)), reverse=True)
+        return reranked + list(tail)
+
+
+class HybridRetriever:
+    """Combine lexical (TF-IDF) and semantic (Sentence Transformer) candidates."""
+
+    def __init__(
+        self,
+        tfidf_retriever: Optional[TFIDFRetriever] = None,
+        semantic_retriever: Optional[SemanticRetriever] = None,
+        reranker: Optional[CrossEncoderReranker] = None,
+        semantic_weight: float = 0.5,
+        tfidf_weight: float = 0.5,
+        fusion_method: str = "linear",
+        rrf_k: int = 60,
+    ):
+        self.tfidf_retriever = tfidf_retriever or TFIDFRetriever()
+        self.semantic_retriever = semantic_retriever or SemanticRetriever()
+        self.reranker = reranker or CrossEncoderReranker()
+        self.semantic_weight = semantic_weight
+        self.tfidf_weight = tfidf_weight
+        self.fusion_method = fusion_method
+        self.rrf_k = rrf_k
+        self.is_indexed: bool = False
+
+    def load_and_index(self, dataset_path: str = "data/processed/campus_documents.jsonl") -> int:
+        records = _load_dataset_records(dataset_path)
+        return self.index_records(records)
+
+    def index_records(self, records: List[Dict[str, Any]]) -> int:
+        c1 = self.tfidf_retriever.index_records(records)
+        c2 = self.semantic_retriever.index_records(records)
+        self.is_indexed = bool(c1 or c2)
+        return max(c1, c2)
+
+    @classmethod
+    def _merge_candidates(
+        cls,
+        tfidf_results: List[Dict[str, Any]],
+        semantic_results: List[Dict[str, Any]],
+        semantic_weight: float = 0.5,
+        tfidf_weight: float = 0.5,
+        fusion_method: str = "linear",
+        rrf_k: int = 60,
+    ) -> List[Dict[str, Any]]:
+        """Merge lexical and semantic candidates without chunk duplication.
+
+        Supported fusion methods:
+        - 'linear': Normalized weighted combination of cosine similarity scores.
+        - 'rrf': Reciprocal Rank Fusion based on rank positions in both candidate lists.
+        """
+        merged_candidates: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+
+        if fusion_method == "rrf":
+            for rank, res in enumerate(tfidf_results, start=1):
+                key = TFIDFRetriever._dedup_key_for_result(res)
+                if key not in merged_candidates:
+                    merged_candidates[key] = dict(res)
+                    merged_candidates[key]["_rrf_score"] = 0.0
+                merged_candidates[key]["_rrf_score"] += tfidf_weight / (rrf_k + rank)
+
+            for rank, res in enumerate(semantic_results, start=1):
+                key = TFIDFRetriever._dedup_key_for_result(res)
+                if key not in merged_candidates:
+                    merged_candidates[key] = dict(res)
+                    merged_candidates[key]["_rrf_score"] = 0.0
+                merged_candidates[key]["_rrf_score"] += semantic_weight / (rrf_k + rank)
+
+            combined = []
+            for item in merged_candidates.values():
+                item["relevance_score"] = round(float(item.pop("_rrf_score", 0.0)), 6)
+                combined.append(item)
+            return sorted(combined, key=lambda it: float(it.get("relevance_score", 0.0)), reverse=True)
+
+        # Default: linear score combination
+        for res in tfidf_results:
+            key = TFIDFRetriever._dedup_key_for_result(res)
+            merged_candidates[key] = dict(res)
+            merged_candidates[key]["_lexical_score"] = float(res.get("relevance_score", 0.0) or 0.0)
+            merged_candidates[key]["_semantic_score"] = 0.0
+
+        for res in semantic_results:
+            key = TFIDFRetriever._dedup_key_for_result(res)
+            if key in merged_candidates:
+                merged_candidates[key]["_semantic_score"] = float(res.get("relevance_score", 0.0) or 0.0)
+            else:
+                item = dict(res)
+                item["_semantic_score"] = float(res.get("relevance_score", 0.0) or 0.0)
+                item["_lexical_score"] = 0.0
+                merged_candidates[key] = item
+
+        combined = []
+        for candidate in merged_candidates.values():
+            lexical = float(candidate.pop("_lexical_score", 0.0))
+            semantic = float(candidate.pop("_semantic_score", 0.0))
+            combined_score = (tfidf_weight * lexical) + (semantic_weight * semantic)
+            candidate["relevance_score"] = round(combined_score, 4)
+            combined.append(candidate)
+
+        return sorted(combined, key=lambda it: float(it.get("relevance_score", 0.0)), reverse=True)
+
+    def retrieve(
+        self,
+        query: str,
+        top_k: int = 5,
+        score_threshold: float = 0.05,
+        strategy: str = "hybrid",
+        rerank: bool = False,
+    ) -> List[Dict[str, Any]]:
+        if strategy == "tfidf":
+            return self.tfidf_retriever.retrieve(query=query, top_k=top_k, score_threshold=score_threshold)
+        if strategy == "semantic":
+            return self.semantic_retriever.retrieve(query=query, top_k=top_k, score_threshold=score_threshold)
+
+        pool_size = max(15, top_k * 4)
+        tfidf_results = self.tfidf_retriever.retrieve(query=query, top_k=pool_size, score_threshold=0.0)
+        semantic_results = self.semantic_retriever.retrieve(query=query, top_k=pool_size, score_threshold=0.0)
+
+        combined = self._merge_candidates(
+            tfidf_results,
+            semantic_results,
+            semantic_weight=self.semantic_weight,
+            tfidf_weight=self.tfidf_weight,
+            fusion_method=self.fusion_method,
+            rrf_k=self.rrf_k,
+        )
+
+        filtered = [c for c in combined if float(c.get("relevance_score", 0.0) or 0.0) >= score_threshold]
+        if rerank or strategy == "hybrid_rerank":
+            filtered = self.reranker.rerank(query, filtered[:20])
+
+        deduplicated: List[Dict[str, Any]] = []
+        seen_keys = set()
+        for result in filtered:
+            key = TFIDFRetriever._dedup_key_for_result(result)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            deduplicated.append(result)
+            if len(deduplicated) >= top_k:
+                break
+        return deduplicated
+
+
+_DEFAULT_RETRIEVER_CACHE: Dict[str, TFIDFRetriever] = {}
+_DEFAULT_SEMANTIC_RETRIEVER_CACHE: Dict[str, SemanticRetriever] = {}
+_DEFAULT_HYBRID_RETRIEVER_CACHE: Dict[str, HybridRetriever] = {}
 
 
 def get_default_retriever(
     dataset_path: str = "data/processed/campus_documents.jsonl",
 ) -> TFIDFRetriever:
     """Factory function returning an initialized, indexed TF-IDF retriever."""
-    retriever = TFIDFRetriever()
-    retriever.load_and_index(dataset_path)
-    return retriever
+    if dataset_path not in _DEFAULT_RETRIEVER_CACHE:
+        retriever = TFIDFRetriever()
+        retriever.load_and_index(dataset_path)
+        _DEFAULT_RETRIEVER_CACHE[dataset_path] = retriever
+    return _DEFAULT_RETRIEVER_CACHE[dataset_path]
+
+
+def get_default_semantic_retriever(
+    dataset_path: str = "data/processed/campus_documents.jsonl",
+    model_name: str = DEFAULT_SEMANTIC_MODEL,
+    device: str = "cpu",
+) -> SemanticRetriever:
+    """Factory function returning an initialized semantic retriever."""
+    cache_key = f"{dataset_path}:{model_name}:{device}"
+    if cache_key not in _DEFAULT_SEMANTIC_RETRIEVER_CACHE:
+        retriever = SemanticRetriever(model_name=model_name, device=device)
+        retriever.load_and_index(dataset_path)
+        retriever.encode_corpus()
+        _DEFAULT_SEMANTIC_RETRIEVER_CACHE[cache_key] = retriever
+    return _DEFAULT_SEMANTIC_RETRIEVER_CACHE[cache_key]
+
+
+def get_default_hybrid_retriever(
+    dataset_path: str = "data/processed/campus_documents.jsonl",
+    model_name: str = DEFAULT_SEMANTIC_MODEL,
+    reranker_name: str = DEFAULT_CROSS_ENCODER_MODEL,
+    device: str = "cpu",
+    fusion_method: str = "linear",
+    semantic_weight: float = 0.5,
+    tfidf_weight: float = 0.5,
+) -> HybridRetriever:
+    """Factory function returning an initialized hybrid retriever."""
+    cache_key = f"{dataset_path}:{model_name}:{reranker_name}:{device}:{fusion_method}:{semantic_weight}:{tfidf_weight}"
+    if cache_key not in _DEFAULT_HYBRID_RETRIEVER_CACHE:
+        tfidf_retriever = get_default_retriever(dataset_path)
+        semantic_retriever = get_default_semantic_retriever(dataset_path=dataset_path, model_name=model_name, device=device)
+        reranker = CrossEncoderReranker(model_name=reranker_name, device=device)
+        hybrid = HybridRetriever(
+            tfidf_retriever=tfidf_retriever,
+            semantic_retriever=semantic_retriever,
+            reranker=reranker,
+            fusion_method=fusion_method,
+            semantic_weight=semantic_weight,
+            tfidf_weight=tfidf_weight,
+        )
+        hybrid.is_indexed = True
+        _DEFAULT_HYBRID_RETRIEVER_CACHE[cache_key] = hybrid
+    return _DEFAULT_HYBRID_RETRIEVER_CACHE[cache_key]
+
+
+
+def _load_dataset_records(dataset_path: str = "data/processed/campus_documents.jsonl") -> List[Dict[str, Any]]:
+    if not os.path.exists(dataset_path):
+        raise FileNotFoundError(f"Dataset path not found: {dataset_path}")
+    records: List[Dict[str, Any]] = []
+    with open(dataset_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                records.append(json.loads(line))
+    return records
 
 
 def query_campus_knowledge(
@@ -364,10 +875,16 @@ def query_campus_knowledge(
     top_k: int = 5,
     score_threshold: float = 0.05,
     dataset_path: str = "data/processed/campus_documents.jsonl",
+    strategy: str = "tfidf",
+    rerank: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Public callable interface:
     Accepts natural-language question and returns top-k ranked chunks.
+    Strategy can be 'tfidf', 'semantic', 'hybrid', or 'hybrid_rerank'.
     """
+    if strategy in {"semantic", "hybrid", "hybrid_rerank"}:
+        hybrid = get_default_hybrid_retriever(dataset_path=dataset_path)
+        return hybrid.retrieve(query=query, top_k=top_k, score_threshold=score_threshold, strategy=strategy, rerank=rerank)
     retriever = get_default_retriever(dataset_path)
     return retriever.retrieve(query=query, top_k=top_k, score_threshold=score_threshold)

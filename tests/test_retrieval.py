@@ -14,7 +14,7 @@ Tests cover:
 
 import pytest
 
-from src.retrieval import DocumentChunk, TFIDFRetriever, chunk_document
+from src.retrieval import CrossEncoderReranker, DocumentChunk, SemanticRetriever, TFIDFRetriever, chunk_document
 
 
 @pytest.fixture
@@ -216,6 +216,36 @@ def test_retriever_unknown_or_irrelevant_query(sample_records):
     assert results == []
 
 
+def test_semantic_retriever_fails_gracefully_without_cached_model():
+    """Semantic retrieval should fail fast and return no results if the model is not cached locally."""
+    retriever = SemanticRetriever(model_name="sentence-transformers/nonexistent-model-name")
+    retriever.index_records([
+        {
+            "document_id": "doc_fallback",
+            "source_url": "https://rvce.edu.in/fallback",
+            "title": "Fallback",
+            "content": "A campus notice about admissions and examinations for the 2026-27 academic year. This section explains the admission process, counselling steps, and the required documents for new students.",
+            "extraction_status": "SUCCESS",
+        }
+    ])
+
+    results = retriever.retrieve("What is the admission procedure?", top_k=3)
+
+    assert results == []
+    assert retriever.model_error is not None
+
+
+def test_reranker_fails_gracefully_without_cached_model():
+    """Cross-encoder reranking should not hang or claim success when a local model is unavailable."""
+    reranker = CrossEncoderReranker(model_name="cross-encoder/nonexistent-model-name")
+    candidates = [{"text": "Example campus admission notice.", "document_title": "Example"}]
+
+    reranked = reranker.rerank("What is the admission procedure?", candidates)
+
+    assert reranked == candidates
+    assert reranker.model_error is not None
+
+
 def test_retriever_unindexed_state():
     """Verify retriever safely returns empty list if called before indexing."""
     retriever = TFIDFRetriever()
@@ -225,3 +255,255 @@ def test_retriever_unindexed_state():
     count = retriever.index_records([])
     assert count == 0
     assert retriever.retrieve("admissions") == []
+
+
+def test_retriever_deduplicates_same_document_and_heading():
+    """Repeated chunks from the same document and heading should not occupy multiple top-k slots."""
+    retriever = TFIDFRetriever()
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk_01",
+            document_id="doc-duplicate",
+            source_url="https://rvce.edu.in/fees",
+            document_title="Fee Notice",
+            heading="Admissions",
+            text="Tuition fee payment due dates for semester fee payment.",
+            searchable_text="Tuition fee payment due dates for semester fee payment.",
+            topic="fees_finance",
+        ),
+        DocumentChunk(
+            chunk_id="chunk_02",
+            document_id="doc-duplicate",
+            source_url="https://rvce.edu.in/fees",
+            document_title="Fee Notice",
+            heading="Admissions",
+            text="Tuition fee payment due dates for semester fee payment.",
+            searchable_text="Tuition fee payment due dates for semester fee payment.",
+            topic="fees_finance",
+        ),
+        DocumentChunk(
+            chunk_id="chunk_03",
+            document_id="doc-duplicate",
+            source_url="https://rvce.edu.in/fees",
+            document_title="Fee Notice",
+            heading="Admissions",
+            text="Late fee penalties and final deadline reminders for semester payment.",
+            searchable_text="Late fee penalties and final deadline reminders for semester payment.",
+            topic="fees_finance",
+        ),
+    ]
+    retriever.chunks = chunks
+    retriever.tfidf_matrix = retriever.vectorizer.fit_transform([
+        c.searchable_text for c in chunks
+    ])
+    retriever.is_indexed = True
+
+    results = retriever.retrieve("semester fee payment due dates", top_k=5, score_threshold=0.0)
+
+    assert len(results) == 2
+    scores = [r["relevance_score"] for r in results]
+    assert scores == sorted(scores, reverse=True)
+    assert {r["chunk_id"] for r in results} == {"chunk_01", "chunk_03"}
+
+
+def test_retriever_keeps_distinct_passages_from_same_document():
+    """Distinct passages under the same document should remain if their text differs."""
+    retriever = TFIDFRetriever()
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk_01",
+            document_id="doc-same",
+            source_url="https://rvce.edu.in/circulars",
+            document_title="Circulars",
+            heading="Academic Schedule",
+            text="Exam registration opens on 10 August.",
+            searchable_text="Exam registration opens on 10 August.",
+            topic="examinations_regulations",
+        ),
+        DocumentChunk(
+            chunk_id="chunk_02",
+            document_id="doc-same",
+            source_url="https://rvce.edu.in/circulars",
+            document_title="Circulars",
+            heading="Academic Schedule",
+            text="Revaluation applications close on 15 August.",
+            searchable_text="Revaluation applications close on 15 August.",
+            topic="examinations_regulations",
+        ),
+    ]
+    retriever.chunks = chunks
+    retriever.tfidf_matrix = retriever.vectorizer.fit_transform([
+        c.searchable_text for c in chunks
+    ])
+    retriever.is_indexed = True
+
+    results = retriever.retrieve("revaluation applications august", top_k=5, score_threshold=0.0)
+
+    assert len(results) == 2
+    assert {r["chunk_id"] for r in results} == {"chunk_01", "chunk_02"}
+    assert results[0]["document_id"] == "doc-same"
+
+
+def test_retriever_dedup_handles_missing_metadata_safely():
+    """Missing document or heading metadata should not trigger key errors or false positives."""
+    retriever = TFIDFRetriever()
+    chunks = [
+        DocumentChunk(
+            chunk_id="chunk_01",
+            document_id=None,
+            source_url=None,
+            document_title="",
+            heading=None,
+            text="Hostel fee payment reminders are due this week.",
+            searchable_text="Hostel fee payment reminders are due this week.",
+            topic=None,
+        ),
+        DocumentChunk(
+            chunk_id="chunk_02",
+            document_id=None,
+            source_url=None,
+            document_title="",
+            heading=None,
+            text="Hostel fee payment reminders are due this week.",
+            searchable_text="Hostel fee payment reminders are due this week.",
+            topic=None,
+        ),
+    ]
+    retriever.chunks = chunks
+    retriever.tfidf_matrix = retriever.vectorizer.fit_transform([
+        c.searchable_text for c in chunks
+    ])
+    retriever.is_indexed = True
+
+    results = retriever.retrieve("hostel fee payment reminders", top_k=5, score_threshold=0.0)
+
+    assert len(results) == 1
+    assert results[0]["document_id"] == "unknown_document"
+    assert results[0]["heading"] == "unknown_heading"
+
+
+def test_pdf_extractor_uses_ocr_when_native_text_is_empty(monkeypatch):
+    """Ensure scanned PDF text falls back to OCR instead of silently returning EMPTY."""
+    from src.extractors import PDFExtractor
+
+    pdf_payload = b"pdf-bytes-" * 20
+
+    def fake_ocr(raw_bytes, url="", dpi=200, max_pages=None):
+        assert raw_bytes == pdf_payload
+        return {
+            "ocr_status": "OCR_SUCCESS",
+            "ocr_text": "Fee notice with payment details and due dates for semester fee payment.",
+            "page_count": 1,
+            "pages_with_text": 1,
+            "error": None,
+        }
+
+    monkeypatch.setattr("src.extractors.HAS_PYMUPDF", False)
+    monkeypatch.setattr("src.extractors.HAS_PYPDF", False)
+    monkeypatch.setattr("src.extractors.ocr_pdf_bytes", fake_ocr)
+
+    result = PDFExtractor().extract(pdf_payload, "https://rvce.edu.in/fees_notice.pdf")
+
+    assert result["extraction_status"] == "SUCCESS"
+    assert "Fee notice" in result["content"]
+    assert "fee notice" in (result["title"] or "").lower()
+    assert result["error_message"] is None
+
+
+def test_semantic_retriever_indexing_and_retrieval_schema(sample_records):
+    """SemanticRetriever should return results with the expected schema and finite normalized scores."""
+    from src.retrieval import SemanticRetriever
+
+    retriever = SemanticRetriever()
+    count = retriever.index_records(sample_records)
+    assert count > 0
+
+    results = retriever.retrieve("What is the admission procedure for B.E.?", top_k=2)
+    assert len(results) <= 2
+    if results:
+        top = results[0]
+        expected_keys = {"chunk_id", "document_id", "text", "document_title", "source_url", "heading", "relevance_score"}
+        assert expected_keys.issubset(top.keys())
+        assert isinstance(top["relevance_score"], float)
+        assert -1.0 <= top["relevance_score"] <= 1.0
+
+
+def test_hybrid_retriever_merges_without_duplicate_chunks():
+    """HybridRetriever should fuse candidates without duplicating chunks."""
+    from src.retrieval import HybridRetriever
+
+    tfidf_results = [
+        {"chunk_id": "c1", "document_id": "doc1", "heading": "Admissions", "text": "Admissions procedure text", "relevance_score": 0.8},
+        {"chunk_id": "c2", "document_id": "doc2", "heading": "Fees", "text": "Fee schedule text", "relevance_score": 0.5},
+    ]
+    semantic_results = [
+        {"chunk_id": "c1", "document_id": "doc1", "heading": "Admissions", "text": "Admissions procedure text", "relevance_score": 0.9},
+        {"chunk_id": "c3", "document_id": "doc3", "heading": "Hostels", "text": "Hostel room details", "relevance_score": 0.7},
+    ]
+
+    merged = HybridRetriever._merge_candidates(
+        tfidf_results,
+        semantic_results,
+        semantic_weight=0.5,
+        tfidf_weight=0.5,
+        fusion_method="linear",
+    )
+
+    assert len(merged) == 3
+    # Top chunk should be c1 because it scored high in both
+    assert merged[0]["chunk_id"] == "c1"
+    assert merged[0]["relevance_score"] == round(0.5 * 0.8 + 0.5 * 0.9, 4)
+
+
+def test_hybrid_retriever_rrf_fusion():
+    """HybridRetriever should support Reciprocal Rank Fusion."""
+    from src.retrieval import HybridRetriever
+
+    tfidf_results = [
+        {"chunk_id": "c1", "document_id": "doc1", "heading": "Admissions", "text": "Passage 1", "relevance_score": 0.9},
+        {"chunk_id": "c2", "document_id": "doc2", "heading": "Fees", "text": "Passage 2", "relevance_score": 0.4},
+    ]
+    semantic_results = [
+        {"chunk_id": "c2", "document_id": "doc2", "heading": "Fees", "text": "Passage 2", "relevance_score": 0.85},
+        {"chunk_id": "c1", "document_id": "doc1", "heading": "Admissions", "text": "Passage 1", "relevance_score": 0.70},
+    ]
+
+    rrf_merged = HybridRetriever._merge_candidates(
+        tfidf_results,
+        semantic_results,
+        semantic_weight=0.5,
+        tfidf_weight=0.5,
+        fusion_method="rrf",
+        rrf_k=60,
+    )
+
+    assert len(rrf_merged) == 2
+    for item in rrf_merged:
+        assert item["relevance_score"] > 0.0
+
+
+def test_cross_encoder_preserves_metadata():
+    """CrossEncoderReranker should preserve source URLs, titles, headings, and chunk IDs."""
+    from src.retrieval import CrossEncoderReranker
+
+    reranker = CrossEncoderReranker()
+    candidates = [
+        {
+            "chunk_id": "chunk_42",
+            "document_id": "doc_rvce_fee",
+            "source_url": "https://rvce.edu.in/fees",
+            "document_title": "Fee Circular",
+            "heading": "Tuition Fee Schedule",
+            "text": "The higher semester tuition fee deadline is 30 September.",
+            "relevance_score": 0.45,
+        }
+    ]
+
+    reranked = reranker.rerank("fee deadline", candidates)
+    assert len(reranked) == 1
+    top = reranked[0]
+    assert top["chunk_id"] == "chunk_42"
+    assert top["source_url"] == "https://rvce.edu.in/fees"
+    assert top["document_title"] == "Fee Circular"
+    assert top["heading"] == "Tuition Fee Schedule"
+

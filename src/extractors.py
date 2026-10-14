@@ -11,12 +11,21 @@ Extracts:
 - Strips navigation menus, footers, popups, scripts, and boilerplate
 """
 
+import base64
 import io
 import logging
 import re
 from typing import Any, Dict, Optional, Tuple
 
 from bs4 import BeautifulSoup, Comment
+
+from src.ocr import (
+    OCR_EMPTY,
+    OCR_FAILED,
+    OCR_SUCCESS,
+    OCR_UNAVAILABLE,
+    ocr_pdf_bytes,
+)
 
 logger = logging.getLogger("campus_pipeline.extractors")
 
@@ -261,6 +270,22 @@ class PDFExtractor:
             except Exception as e:
                 logger.warning(f"pypdf extraction failed on {url}: {e}")
 
+        # Native extraction is empty or insufficient: attempt OCR as a fallback for
+        # scanned PDFs while keeping the original source URL and metadata intact.
+        content = "\n\n--- Page Break ---\n\n".join(extracted_pages).strip()
+        ocr_result = None
+        if len(content) < 50:
+            ocr_result = ocr_pdf_bytes(raw_bytes, url=url)
+            ocr_status = ocr_result.get("ocr_status")
+            if ocr_status == OCR_SUCCESS:
+                ocr_text = (ocr_result.get("ocr_text") or "").strip()
+                if ocr_text:
+                    extracted_pages = [ocr_text]
+                    content = ocr_text
+            elif ocr_status in (OCR_EMPTY, OCR_FAILED, OCR_UNAVAILABLE):
+                logger.warning(f"OCR fallback did not recover PDF text for {url}: {ocr_result.get('error')}")
+                content = content or ""
+
         # Derive title from filename or first line if title is still missing
         if not title:
             # Check first line of page 1
@@ -275,15 +300,20 @@ class PDFExtractor:
                 filename = url.split("/")[-1].replace(".pdf", "").replace("-", " ").replace("_", " ")
                 title = filename.title()
 
-        content = "\n\n--- Page Break ---\n\n".join(extracted_pages)
-        status = "SUCCESS" if len(content.strip()) >= 50 else "EMPTY"
+        content = "\n\n--- Page Break ---\n\n".join(extracted_pages).strip()
+        status = "SUCCESS" if len(content) >= 50 else "EMPTY"
+
+        # Keep the original metadata and call out OCR-specific failure states when no text is recovered.
+        error_message = None if status == "SUCCESS" else "PDF extraction yielded no readable text (scanned or image-only)"
+        if not content and ocr_result:
+            error_message = ocr_result.get("error") or error_message
 
         return {
             "title": title,
-            "content": content.strip(),
+            "content": content,
             "last_modified": last_modified,
             "extraction_status": status,
-            "error_message": None if status == "SUCCESS" else "PDF extraction yielded no readable text (scanned or image-only)",
+            "error_message": error_message,
         }
 
 
@@ -299,6 +329,8 @@ def extract_record(raw_record: Dict[str, Any]) -> Dict[str, Any]:
     if content_type == "PDF":
         extractor = PDFExtractor()
         raw_bytes = raw_record.get("raw_bytes")
+        if raw_bytes is None and raw_record.get("raw_bytes_base64"):
+            raw_bytes = base64.b64decode(raw_record["raw_bytes_base64"])
         result = extractor.extract(raw_bytes, url, headers_meta)
     else:
         extractor = HTMLExtractor()

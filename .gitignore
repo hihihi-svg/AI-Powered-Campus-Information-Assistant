@@ -7,6 +7,7 @@ __pycache__/
 # Environments
 .env
 .venv
+.venv*
 env/
 venv/
 ENV/
@@ -33,6 +34,10 @@ wheels/
 .idea/
 *.swp
 *.swo
+
+# Local MLflow and synthetic monitoring artifacts
+mlruns/
+reports/simulated_degraded_corpus.jsonl
 
 # OS files
 .DS_Store

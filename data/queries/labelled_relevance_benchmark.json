@@ -1,0 +1,74 @@
+[
+  {
+    "query_id": "LQ001",
+    "query_text": "What is the procedure for B.E. admission through COMEDK quota?",
+    "intent": "admissions",
+    "relevant_document_ids": ["doc_html_7f7c1df734d402ad"],
+    "relevant_urls": ["https://rvce.edu.in/admission-circulars/"],
+    "relevance_scale": "binary",
+    "notes": "Admission circulars page directly addresses B.E. admission procedures and notifications."
+  },
+  {
+    "query_id": "LQ002",
+    "query_text": "What is the deadline for paying higher semester tuition fees?",
+    "intent": "fees_finance",
+    "relevant_document_ids": ["doc_html_32fd10141b0a842b"],
+    "relevant_urls": ["https://rvce.edu.in/academics_and_examinations/fee_payment_circulars/"],
+    "relevance_scale": "binary",
+    "notes": "Fee payment circulars page contains higher semester fee notices and payment deadlines."
+  },
+  {
+    "query_id": "LQ003",
+    "query_text": "When will the academic calendar and first semester exam timetable be released?",
+    "intent": "academics_exams",
+    "relevant_document_ids": ["doc_html_b5dd7e37edeab51f", "doc_html_7bc689fd5b6cd47e"],
+    "relevant_urls": ["https://rvce.edu.in/calendar-of-events/", "https://rvce.edu.in/examination-circulars/"],
+    "relevance_scale": "binary",
+    "notes": "Calendar of events and examination circulars pages provide academic schedules and exam timetables."
+  },
+  {
+    "query_id": "LQ004",
+    "query_text": "What was the average package and highest salary offered in campus placements?",
+    "intent": "placements_careers",
+    "relevant_document_ids": ["doc_html_bc21f8af0b137da2", "doc_html_627db72961746d15"],
+    "relevant_urls": ["https://rvce.edu.in/placement_and_training/placement_statistics/", "https://rvce.edu.in/placement_and_training/"],
+    "relevance_scale": "binary",
+    "notes": "Placement statistics and training pages contain salary offers, stats, and company recruitment details."
+  },
+  {
+    "query_id": "LQ005",
+    "query_text": "Where can I find programmes and faculty details for engineering departments?",
+    "intent": "departments_faculty",
+    "relevant_document_ids": ["doc_html_a1be8dbacce3c680"],
+    "relevant_urls": ["https://rvce.edu.in/programmes-faculty-details/"],
+    "relevance_scale": "binary",
+    "notes": "Programmes & Faculty details page lists academic departments, faculty roster, and coordinators."
+  },
+  {
+    "query_id": "LQ006",
+    "query_text": "What student services and academic facilities are available on campus?",
+    "intent": "facilities_hostels",
+    "relevant_document_ids": ["doc_html_5a3381b6b3bbdbe5", "doc_html_b7d1938d436c0421"],
+    "relevant_urls": ["https://rvce.edu.in/academics_and_examinations/academic_student_services/", "https://rvce.edu.in/academic_student_services/"],
+    "relevance_scale": "binary",
+    "notes": "Academic student services pages list student facilities, counseling, and campus amenities."
+  },
+  {
+    "query_id": "LQ007",
+    "query_text": "What is the official contact email and reception address for RV College of Engineering?",
+    "intent": "general_college_info",
+    "relevant_document_ids": ["doc_html_b9ceb436db517957"],
+    "relevant_urls": ["https://rvce.edu.in/"],
+    "relevance_scale": "binary",
+    "notes": "Main homepage contains the official postal address, contact email, and telephone numbers."
+  },
+  {
+    "query_id": "LQ008",
+    "query_text": "Where are B.E. first year academic circulars and notifications published?",
+    "intent": "academics_exams",
+    "relevant_document_ids": ["doc_html_71878354875e9c3d"],
+    "relevant_urls": ["https://rvce.edu.in/b-e-first-year-academic-circulars/"],
+    "relevance_scale": "binary",
+    "notes": "First year academic circulars page publishes circulars specifically for newly joined B.E. students."
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "benchmark_path": "data\\queries\\campus_queries.csv",
+  "dataset_path": "data\\processed\\campus_documents.jsonl",
+  "top_k": 2,
+  "score_threshold": 0.05,
+  "retriever_type": "semantic",
+  "retrieval_backend": "SemanticRetriever",
+  "rerank": false,
+  "fusion_method": "linear",
+  "semantic_weight": 0.5,
+  "tfidf_weight": 0.5,
+  "sentence_transformer_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "cross_encoder_model": "none",
+  "embedding_dimension": 384,
+  "similarity_metric": "cosine",
+  "benchmark_has_relevance_labels": false,
+  "evaluation_mode": "retrieval_hit_proxy",
+  "execution_device": "cpu"
+}

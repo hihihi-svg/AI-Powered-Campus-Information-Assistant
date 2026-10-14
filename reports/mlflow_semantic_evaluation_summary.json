@@ -1,0 +1,46 @@
+{
+  "config": {
+    "benchmark_path": "data\\queries\\campus_queries.csv",
+    "dataset_path": "data\\processed\\campus_documents.jsonl",
+    "top_k": 2,
+    "score_threshold": 0.05,
+    "retriever_type": "semantic",
+    "retrieval_backend": "SemanticRetriever",
+    "rerank": false,
+    "fusion_method": "linear",
+    "semantic_weight": 0.5,
+    "tfidf_weight": 0.5,
+    "sentence_transformer_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "cross_encoder_model": "none",
+    "embedding_dimension": 384,
+    "similarity_metric": "cosine",
+    "benchmark_has_relevance_labels": false,
+    "evaluation_mode": "retrieval_hit_proxy",
+    "execution_device": "cpu"
+  },
+  "metrics": {
+    "queries_evaluated": 1,
+    "queries_with_results": 1,
+    "queries_without_results": 0,
+    "retrieval_coverage": 1.0,
+    "relevance_rate": 1.0,
+    "average_best_score": 0.6256,
+    "average_retrieved_results": 2.0,
+    "benchmark_has_relevance_labels": false,
+    "benchmark_note": "The benchmark CSV has query text and intent labels only; no gold relevance labels are available. The 'retrieval_coverage' below is a retrieval-hit proxy based on whether at least one returned passage passed the configured score threshold.",
+    "evaluation_duration_seconds": 0.0241
+  },
+  "queries": [
+    {
+      "query_id": "q1",
+      "intent": "admissions",
+      "split_group": "test",
+      "query_text": "admission circulars and procedures",
+      "result_count": 2,
+      "has_result": true,
+      "max_score": 0.6256,
+      "top_result_title": "Admission Circulars",
+      "top_result_url": "https://rvce.edu.in/admission-circulars/"
+    }
+  ]
+}
