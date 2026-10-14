@@ -507,3 +507,140 @@ def test_cross_encoder_preserves_metadata():
     assert top["document_title"] == "Fee Circular"
     assert top["heading"] == "Tuition Fee Schedule"
 
+
+# -----------------------------------------------------------------------------
+# 5. Oversized Document & Overlap Regression Tests
+# -----------------------------------------------------------------------------
+
+def test_chunk_document_splits_oversized_text_into_bounded_chunks():
+    """Ensure sections exceeding max_chunk_chars are split into bounded chunks."""
+    long_content = (
+        "## Important Campus Circular\n"
+        + "This is a detailed paragraph explaining student regulations and payment schedules. " * 40
+    )  # ~3,500 chars
+    record = {
+        "document_id": "doc_long_01",
+        "source_url": "https://rvce.edu.in/long-notice/",
+        "title": "Long Notice",
+        "content": long_content,
+        "topic": "fees_finance",
+        "extraction_status": "SUCCESS",
+    }
+
+    chunks = chunk_document(record, max_chunk_chars=1000, overlap_chars=100)
+
+    assert len(chunks) >= 3
+    for c in chunks:
+        assert isinstance(c, DocumentChunk)
+        assert c.char_length <= 1000
+        assert c.document_id == "doc_long_01"
+        assert c.heading == "Important Campus Circular"
+
+
+def test_chunk_document_preserves_paragraph_boundaries():
+    """Paragraph breaks (double newlines) should not be collapsed into single newlines."""
+    content = (
+        "## Fee Regulations\n"
+        "Paragraph One outlines the tuition fee structure for undergraduate engineering.\n\n"
+        "Paragraph Two describes online payment through the student portal.\n\n"
+        "Paragraph Three specifies the deadline and bank challan instructions."
+    )
+    record = {
+        "document_id": "doc_para_01",
+        "source_url": "https://rvce.edu.in/paras/",
+        "title": "Paragraphs Notice",
+        "content": content,
+        "extraction_status": "SUCCESS",
+    }
+
+    chunks = chunk_document(record, max_chunk_chars=200, overlap_chars=30)
+    assert len(chunks) >= 2
+    for c in chunks:
+        assert c.document_id == "doc_para_01"
+        assert c.char_length > 0
+
+
+def test_chunk_document_uses_overlap_chars():
+    """Subsequent sub-chunks should contain overlapping tokens from the preceding sub-chunk."""
+    para1 = "Alpha sentence detailing admission criteria for first-year engineering students. " * 12
+    para2 = "Beta sentence explaining required verification documents and score cards. " * 12
+    content = f"## Admissions Guide\n{para1}\n\n{para2}"
+
+    record = {
+        "document_id": "doc_overlap_01",
+        "source_url": "https://rvce.edu.in/admissions/",
+        "title": "Admissions Guide",
+        "content": content,
+        "extraction_status": "SUCCESS",
+    }
+
+    chunks = chunk_document(record, max_chunk_chars=800, overlap_chars=150)
+    assert len(chunks) >= 2
+
+    chunk0_text = chunks[0].text
+    chunk1_text = chunks[1].text
+
+    # Verify that the beginning of chunk 1 shares tokens with the end of chunk 0
+    c0_tail_tokens = set(chunk0_text[-120:].split())
+    c1_head_tokens = set(chunk1_text[:180].split())
+    overlap_shared = c0_tail_tokens.intersection(c1_head_tokens)
+    assert len(overlap_shared) >= 2, f"Expected overlapping tokens between chunks, got: {overlap_shared}"
+
+
+def test_retrieval_ranks_fine_policy_above_generic_institution_blurbs():
+    """A specific fine query should rank the fine clause above generic short blurbs matching only 'rvce'."""
+    short_generic_blurb = {
+        "document_id": "doc_generic_faculty",
+        "source_url": "https://rvce.edu.in/department/biotechnology/research/",
+        "title": "RVCE Bengaluru Research Faculty",
+        "content": "## Research Faculty\nGet to know the depth of research expertise within the RVCE campus community.",
+        "extraction_status": "SUCCESS",
+    }
+    long_circular_with_fine = {
+        "document_id": "doc_fee_circular",
+        "source_url": "https://rvce.edu.in/fees/ug_circular.pdf",
+        "title": "RVCE UG Higher Semester Fee Circular",
+        "content": (
+            "## RVCE Fee Payment Circular\n"
+            + "R.V. College of Engineering (RVCE). The online payment of semester fees for B.E. programs has been enabled through payment gateways. " * 10
+            + "\n\n(Note: A fine of Rs.100 per day will be levied for the payment of fee after the due date)\n\n"
+            + "Please remit the tuition fee as per the enclosed fee structure to the prescribed bank accounts. " * 10
+        ),
+        "extraction_status": "SUCCESS",
+    }
+
+    retriever = TFIDFRetriever()
+    retriever.index_records([short_generic_blurb, long_circular_with_fine])
+
+    results = retriever.retrieve("What is the fine for late fee payment at RVCE?", top_k=2)
+
+    assert len(results) >= 1
+    top = results[0]
+    assert top["document_id"] == "doc_fee_circular"
+    assert "fine" in top["text"].lower()
+    assert "rs.100" in top["text"].lower()
+
+
+def test_chunk_document_preserves_metadata_across_subchunks():
+    """Every generated sub-chunk must retain document ID, title, heading, and source URL."""
+    record = {
+        "document_id": "doc_meta_test",
+        "source_url": "https://rvce.edu.in/meta-test/",
+        "title": "Official Test Circular",
+        "topic": "fees_finance",
+        "last_modified": "Tue, 13 Oct 2026 10:00:00 GMT",
+        "content": "## General Instructions\n" + "Important instructions for registration and examinations. " * 30,
+        "extraction_status": "SUCCESS",
+    }
+
+    chunks = chunk_document(record, max_chunk_chars=600, overlap_chars=80)
+    assert len(chunks) >= 2
+    for idx, c in enumerate(chunks):
+        assert c.chunk_id == f"doc_meta_test_c{idx:02d}"
+        assert c.document_id == "doc_meta_test"
+        assert c.document_title == "Official Test Circular"
+        assert c.source_url == "https://rvce.edu.in/meta-test/"
+        assert c.heading == "General Instructions"
+        assert c.topic == "fees_finance"
+        assert c.last_modified == "Tue, 13 Oct 2026 10:00:00 GMT"
+

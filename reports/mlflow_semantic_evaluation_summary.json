@@ -28,7 +28,7 @@
     "average_retrieved_results": 2.0,
     "benchmark_has_relevance_labels": false,
     "benchmark_note": "The benchmark CSV has query text and intent labels only; no gold relevance labels are available. The 'retrieval_coverage' below is a retrieval-hit proxy based on whether at least one returned passage passed the configured score threshold.",
-    "evaluation_duration_seconds": 0.0241
+    "evaluation_duration_seconds": 0.0285
   },
   "queries": [
     {

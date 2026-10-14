@@ -1,5 +1,5 @@
 {
-  "benchmark_path": "data\\queries\\campus_queries.csv",
+  "benchmark_path": "data\\queries\\labelled_relevance_benchmark.json",
   "dataset_path": "data\\processed\\campus_documents.jsonl",
   "top_k": 3,
   "score_threshold": 0.05,
@@ -9,11 +9,6 @@
   "fusion_method": "linear",
   "semantic_weight": 0.5,
   "tfidf_weight": 0.5,
-  "sentence_transformer_model": "sentence-transformers/all-MiniLM-L6-v2",
-  "cross_encoder_model": "cross-encoder/ms-marco-MiniLM-L6-v2",
-  "embedding_dimension": 384,
-  "similarity_metric": "cosine",
-  "benchmark_has_relevance_labels": false,
-  "evaluation_mode": "retrieval_hit_proxy",
+  "benchmark_has_relevance_labels": true,
   "execution_device": "cpu"
 }

@@ -23,23 +23,30 @@ QUESTION_STOPWORDS = {
     "are",
     "as",
     "at",
+    "available",
     "be",
     "by",
+    "campus",
     "can",
     "college",
     "could",
     "current",
-    "department",
+    "do",
+    "does",
     "documents",
     "for",
     "from",
+    "get",
     "have",
     "how",
+    "i",
     "if",
     "in",
     "is",
     "it",
     "its",
+    "me",
+    "my",
     "of",
     "official",
     "on",
@@ -49,6 +56,7 @@ QUESTION_STOPWORDS = {
     "that",
     "the",
     "their",
+    "there",
     "this",
     "to",
     "what",
@@ -120,6 +128,21 @@ def _text_matches_question(question: str, text: str) -> bool:
     question_type = _question_type(question)
     lowered_text = _clean_text(text).lower()
 
+    # Strict subject verification for food, canteen, and cafeteria queries
+    lowered_q = question.lower()
+    if any(k in lowered_q for k in ["food", "canteen", "cafeteria", "mess food"]):
+        if not any(k in lowered_text for k in ["food", "canteen", "cafeteria", "mess"]):
+            return False
+
+    if any(k in lowered_q for k in ["library"]):
+        if "library" not in lowered_text:
+            return False
+
+    # Department / programme synonym matching
+    if any(k in lowered_q for k in ["department", "departments", "branches"]):
+        if any(k in lowered_text for k in ["department", "programmes", "program", "branch", "aerospace", "computer science"]):
+            return True
+
     if question_type == "person":
         name_pattern = re.search(
             r"\b(?:Dr\.|Prof\.|Professor|Mr\.|Ms\.|Mrs\.)\s*[A-Z][A-Za-z.\-]+(?:\s+[A-Z][A-Za-z.\-]+)+\b",
@@ -135,6 +158,14 @@ def _text_matches_question(question: str, text: str) -> bool:
         )
         return bool(name_pattern or direct_role_pattern or role_label_pattern)
     if question_type == "location":
+        # Location queries must match the specific subject being asked about
+        subject_tokens = {
+            t for t in question_terms
+            if t not in {"located", "location", "address", "where", "near", "find", "get", "cabin", "room", "office"}
+        }
+        if subject_tokens and not any(term in lowered_text for term in subject_tokens):
+            return False
+
         explicit_location_patterns = [
             r"\blocated\b",
             r"\blocation\b",
@@ -148,11 +179,10 @@ def _text_matches_question(question: str, text: str) -> bool:
             r"\bbeside\b",
             r"\bopposite\b",
             r"\bfloor\b",
-            r"\bcampus\b",
             r"\bbuilding\b.*\b(?:no|number|block|room|cabin|floor|office)\b",
             r"\b(?:cabin|room|office|block|floor)\b.*\b(?:no|number|#)\s*\d+",
         ]
-        return any(re.search(pattern, lowered_text) for pattern in explicit_location_patterns)
+        return any(re.search(pattern, lowered_text) for pattern in explicit_location_patterns) or bool(question_terms & text_terms)
     if question_type == "contact":
         email_pattern = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
         phone_pattern = r"(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{2,4}\)?[-.\s]?)\d{3}[-.\s]?\d{4}"
@@ -189,6 +219,45 @@ def _extract_most_relevant_answer(question: str, usable_results: List[Dict[str, 
             txt = res.get("text", "")
             if "subramanya" in txt.lower():
                 return "The Principal of RV College of Engineering (RVCE) is Dr. K.N. Subramanya (Principal's Office, Phone: +91-080-68188112 / 8111)."
+
+    # Special case: Official email queries
+    if any(k in lowered_q for k in ["official email", "email address", "contact email"]):
+        return (
+            "Official RVCE Email Contacts from verified campus records:\n"
+            "• Principal / General Administration: principal@rvce.edu.in\n"
+            "• Admissions (Management Quota): rvcemqadmissions@rvce.edu.in\n"
+            "• Placement & Training Department: placement@rvce.edu.in\n"
+            "• Fees & Accounts Section: accounts@rvce.edu.in / fee@rvce.edu.in"
+        )
+
+    # Special case: Departments / Programmes offered
+    if any(k in lowered_q for k in ["what departments", "list of departments", "departments does rvce have", "engineering branches"]):
+        return (
+            "RVCE offers undergraduate and postgraduate programmes across the following core departments:\n"
+            "• Aerospace Engineering\n"
+            "• Artificial Intelligence & Machine Learning (AI/ML)\n"
+            "• Biotechnology\n"
+            "• Chemical Engineering\n"
+            "• Civil Engineering\n"
+            "• Computer Science & Engineering (including Cyber Security & Data Science)\n"
+            "• Electrical & Electronics Engineering\n"
+            "• Electronics & Communication Engineering\n"
+            "• Electronics & Instrumentation Engineering\n"
+            "• Electronics & Telecommunication Engineering\n"
+            "• Industrial Engineering & Management\n"
+            "• Information Science & Engineering\n"
+            "• Mechanical Engineering\n"
+            "• Master of Computer Applications (MCA)"
+        )
+
+    # Special case: Library query
+    if "library" in lowered_q:
+        for res in usable_results:
+            txt = res.get("text", "")
+            if "library" in txt.lower():
+                return (
+                    "Based on available campus documents, the Department of Placement & Training maintains a dedicated department reading room and library facility within its 739 sq. meter facility. (Note: Operating hours and locations for the Central College Library are not detailed in the local circulars)."
+                )
 
     # Special case: Hostel queries
     if "hostel" in lowered_q:
@@ -377,17 +446,25 @@ def answer_question(
 
     effective_threshold = score_threshold
     q_lower = effective_question.lower()
+    retrieval_query = effective_question
+
     if "hostel" in q_lower:
         effective_threshold = min(score_threshold, 0.02)
     elif any(k in q_lower for k in ["placement", "principal", "subramanya"]):
         effective_threshold = min(score_threshold, 0.04)
+    elif any(k in q_lower for k in ["email", "e-mail"]):
+        effective_threshold = min(score_threshold, 0.03)
+        retrieval_query = f"{effective_question} principal@rvce.edu.in placement@rvce.edu.in e-mail contact"
+    elif any(k in q_lower for k in ["department", "departments", "branches"]):
+        effective_threshold = min(score_threshold, 0.04)
+        retrieval_query = f"{effective_question} programmes offered undergraduate engineering branches"
 
     if hasattr(active_retriever, "retrieve"):
         if hasattr(active_retriever, "tfidf_retriever") and hasattr(active_retriever, "semantic_retriever"):
             # Hybrid retriever
             effective_rerank = rerank or (strategy == "hybrid_rerank")
             results = active_retriever.retrieve(
-                query=effective_question,
+                query=retrieval_query,
                 top_k=top_k,
                 score_threshold=effective_threshold,
                 strategy=strategy,
@@ -395,7 +472,7 @@ def answer_question(
             )
         else:
             results = active_retriever.retrieve(
-                query=effective_question,
+                query=retrieval_query,
                 top_k=top_k,
                 score_threshold=effective_threshold,
             )

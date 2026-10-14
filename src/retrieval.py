@@ -126,6 +126,80 @@ class DocumentChunk:
     word_count: int = 0
 
 
+def _sub_chunk_section(
+    cleaned_block: str,
+    max_chunk_chars: int = 1200,
+    min_chunk_chars: int = 35,
+    overlap_chars: int = 150,
+) -> List[str]:
+    """Split an oversized section text block into bounded sub-chunks with overlap."""
+    if len(cleaned_block) <= max_chunk_chars:
+        return [cleaned_block] if len(cleaned_block) >= min_chunk_chars else []
+
+    # If the text has double-newline paragraph boundaries, break by paragraphs first
+    paragraphs = [p.strip() for p in cleaned_block.split("\n\n") if p.strip()]
+
+    # If any paragraph is longer than max_chunk_chars, split it into smaller units
+    units: List[str] = []
+    for p in paragraphs:
+        if len(p) <= max_chunk_chars:
+            units.append(p)
+        else:
+            lines = [ln.strip() for ln in p.split("\n") if ln.strip()]
+            for ln in lines:
+                if len(ln) <= max_chunk_chars:
+                    units.append(ln)
+                else:
+                    words = ln.split(" ")
+                    curr = ""
+                    for w in words:
+                        if len(curr) + len(w) + 1 <= max_chunk_chars:
+                            curr = f"{curr} {w}".strip() if curr else w
+                        else:
+                            if curr:
+                                units.append(curr)
+                            curr = w
+                    if curr:
+                        units.append(curr)
+
+    chunks: List[str] = []
+    current_chunk = ""
+
+    for u in units:
+        sep = "\n\n" if current_chunk else ""
+        if len(current_chunk) + len(sep) + len(u) <= max_chunk_chars:
+            current_chunk = f"{current_chunk}{sep}{u}" if current_chunk else u
+        else:
+            if len(current_chunk) >= min_chunk_chars:
+                chunks.append(current_chunk)
+
+            if overlap_chars > 0 and len(current_chunk) > overlap_chars:
+                overlap_text = current_chunk[-overlap_chars:].strip()
+                first_ws = overlap_text.find(" ")
+                if first_ws != -1 and first_ws < len(overlap_text) // 2:
+                    overlap_text = overlap_text[first_ws + 1:].strip()
+            else:
+                overlap_text = ""
+
+            sep = "\n\n" if overlap_text else ""
+            if len(overlap_text) + len(sep) + len(u) <= max_chunk_chars:
+                current_chunk = f"{overlap_text}{sep}{u}" if overlap_text else u
+            else:
+                current_chunk = u
+
+    if len(current_chunk) >= min_chunk_chars:
+        if len(current_chunk) <= max_chunk_chars:
+            chunks.append(current_chunk)
+        else:
+            step = max(1, max_chunk_chars - overlap_chars)
+            for s in range(0, len(current_chunk), step):
+                sub = current_chunk[s : s + max_chunk_chars].strip()
+                if len(sub) >= min_chunk_chars:
+                    chunks.append(sub)
+
+    return chunks
+
+
 def chunk_document(
     record: Dict[str, Any],
     max_chunk_chars: int = 1200,
@@ -217,8 +291,9 @@ def chunk_document(
         if "principal" in h_norm and source_url != "https://rvce.edu.in/":
             continue
 
-        # Avoid empty stubs or pure punctuation
-        cleaned_block = re.sub(r"[\r\n]+", "\n", text_block).strip()
+        # Normalize line endings without destroying paragraph double-newlines
+        norm_block = text_block.replace("\r\n", "\n").replace("\r", "\n")
+        cleaned_block = re.sub(r"\n{3,}", "\n\n", norm_block).strip()
         if not cleaned_block:
             continue
 
@@ -254,37 +329,16 @@ def chunk_document(
                 )
                 chunk_counter += 1
         else:
-            # Paragraph-based sub-chunking with overlap for long sections
-            paragraphs = [p.strip() for p in cleaned_block.split("\n\n") if p.strip()]
-            current_sub = ""
-            for p in paragraphs:
-                if len(current_sub) + len(p) + 2 <= max_chunk_chars:
-                    current_sub = f"{current_sub}\n\n{p}".strip() if current_sub else p
-                else:
-                    if len(current_sub) >= min_chunk_chars:
-                        chunk_id = f"{doc_id}_c{chunk_counter:02d}"
-                        searchable = f"{title} | {heading}\n{current_sub}"
-                        chunks.append(
-                            DocumentChunk(
-                                chunk_id=chunk_id,
-                                document_id=doc_id,
-                                source_url=source_url,
-                                document_title=title,
-                                heading=heading,
-                                text=current_sub,
-                                searchable_text=searchable,
-                                topic=topic,
-                                last_modified=last_mod,
-                                char_length=len(current_sub),
-                                word_count=len(current_sub.split()),
-                            )
-                        )
-                        chunk_counter += 1
-                    current_sub = p
-
-            if len(current_sub) >= min_chunk_chars:
+            # Paragraph and window-based sub-chunking with overlap for long sections
+            sub_chunks = _sub_chunk_section(
+                cleaned_block=cleaned_block,
+                max_chunk_chars=max_chunk_chars,
+                min_chunk_chars=min_chunk_chars,
+                overlap_chars=overlap_chars,
+            )
+            for sub_text in sub_chunks:
                 chunk_id = f"{doc_id}_c{chunk_counter:02d}"
-                searchable = f"{title} | {heading}\n{current_sub}"
+                searchable = f"{title} | {heading}\n{sub_text}"
                 chunks.append(
                     DocumentChunk(
                         chunk_id=chunk_id,
@@ -292,12 +346,12 @@ def chunk_document(
                         source_url=source_url,
                         document_title=title,
                         heading=heading,
-                        text=current_sub,
+                        text=sub_text,
                         searchable_text=searchable,
                         topic=topic,
                         last_modified=last_mod,
-                        char_length=len(current_sub),
-                        word_count=len(current_sub.split()),
+                        char_length=len(sub_text),
+                        word_count=len(sub_text.split()),
                     )
                 )
                 chunk_counter += 1
