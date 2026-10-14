@@ -212,6 +212,11 @@ def chunk_document(
         if h_norm in BOILERPLATE_HEADINGS:
             continue
 
+        # Avoid duplicating generic sitewide footer blocks (e.g. Principal's Office)
+        # across every single subpage or department page. Only keep it under the primary homepage.
+        if "principal" in h_norm and source_url != "https://rvce.edu.in/":
+            continue
+
         # Avoid empty stubs or pure punctuation
         cleaned_block = re.sub(r"[\r\n]+", "\n", text_block).strip()
         if not cleaned_block:
