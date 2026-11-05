@@ -137,23 +137,19 @@ pip install -r requirements.txt
 ```
 
 ### 5.2 Dataset Versioning with DVC
-The repository uses DVC to version the canonical dataset files without altering their contents. No remote storage is configured in this workspace.
+The repository tracks the canonical dataset files using DVC pointer files (`.dvc`). The actual underlying data files (`data/raw/campus_documents.jsonl`, `data/raw/collection_manifest.json`, and `data/processed/campus_documents.jsonl`) are excluded from Git via `.gitignore`.
+
+> [!WARNING]
+> **Clean-Clone Dataset Availability Note**:
+> No DVC remote storage backend is configured in this repository (`.dvc/config` has no remotes configured). Consequently, **running `dvc pull` on a newly cloned repository cannot download or restore the corpus**. The dataset cannot be restored via DVC until a remote storage backend (such as S3, GCS, Azure Blob, or an SSH remote) is configured by the maintainer.
+>
+> On a fresh clone where the corpus is not pre-populated, the corpus must either be generated locally by executing the crawler pipeline (`python -m src.build_dataset`), or the `campus_documents.jsonl` file must be placed into `data/processed/` manually before running retrieval, evaluation, or the web application.
 
 ```bash
-# Install DVC if it is not available
-python -m pip install dvc
-
-# Initialize DVC once per repository
-dvc init
-
-# Track the canonical raw and processed dataset files
-# Leave the files on disk; DVC creates the .dvc metadata and gitignore entries.
-dvc add data/raw/campus_documents.jsonl data/raw/collection_manifest.json data/processed/campus_documents.jsonl
-
-# Inspect DVC state locally
+# Inspect DVC tracking state locally
 dvc status
 
-# Inspect Git state after tracking metadata is created
+# Inspect tracking metadata and pointer files in Git
 git status --short --branch
 ```
 
@@ -178,7 +174,6 @@ python -m src.build_dataset --config config.yaml --max-pages 60
 The repository includes a lightweight browser UI for the existing FastAPI backend. The app serves the frontend at the root URL and keeps the API endpoints working:
 
 ```bash
-cd "C:\Users\lalan\Desktop\AI-Powered-Campus-Information-Assistant"
 python -m uvicorn src.api:app --host 127.0.0.1 --port 8000
 ```
 
@@ -255,6 +250,32 @@ The acquired campus documents serve as the authoritative knowledge base for RAG 
 | `STUDENT_EXPERIENCE` | Campus life, food, peer guidance |
 | `OUT_OF_SCOPE` | Queries unrelated to campus services |
 
+### 8.1 Supervised Intent-Classification Pipeline
+The repository provides a standalone supervised intent-classification pipeline in [src/intent_classification.py](file:///c:/Users/lalan/Desktop/AI-Powered-Campus-Information-Assistant/src/intent_classification.py). It trains and evaluates:
+1. **Majority-Class Baseline**: `DummyClassifier(strategy="most_frequent")`
+2. **Primary Model**: A scikit-learn `Pipeline` composed of:
+   - `TfidfVectorizer(ngram_range=(1, 2), sublinear_tf=True)`
+   - `LogisticRegression(C=1.0, max_iter=1000, random_state=42)`
+
+The pipeline trains strictly on the 32 pre-assigned training samples (`split_group == "train"`) from [data/queries/campus_queries.csv](file:///c:/Users/lalan/Desktop/AI-Powered-Campus-Information-Assistant/data/queries/campus_queries.csv) and evaluates on the 8 held-out test samples (`split_group == "test"`), ensuring zero test-set leakage.
+
+#### Run Command:
+```bash
+python -m src.intent_classification
+```
+
+#### Optional CLI Arguments:
+- `--dataset`: Path to queries CSV (default: `data/queries/campus_queries.csv`).
+- `--experiment-name`: MLflow experiment name (default: `rvce-campus-intent-classification`).
+- `--report-path`: Output path for evaluation report (default: `reports/intent_classification_evaluation.json`).
+- `--tracking-uri`: MLflow tracking URI (defaults to local file-backed `./mlruns`).
+
+#### Output Report & MLflow Experiment:
+- **Evaluation Report ([reports/intent_classification_evaluation.json](file:///c:/Users/lalan/Desktop/AI-Powered-Campus-Information-Assistant/reports/intent_classification_evaluation.json))**:
+  Records dataset path and SHA-256 hash, split counts (32 train / 8 test), overall evaluation metrics for baseline and Logistic Regression (Accuracy, Macro Precision/Recall/F1, Weighted Precision/Recall/F1), per-class classification reports, confusion matrices, test predictions with probabilities, and an explicit evaluation limitation notice.
+- **MLflow Tracking (`rvce-campus-intent-classification`)**:
+  Logs pipeline hyperparameters (`vectorizer__ngram_range`, `classifier__C`, `classifier__max_iter`, `random_state`), evaluation metrics, confusion matrix JSON artifacts, and saves the trained model artifact using native `mlflow.sklearn.log_model` for reloading.
+
 ## 9. Local Docker and CI
 
 ### 9.1 Build the image
@@ -326,27 +347,41 @@ The assistant supports four retrieval configurations through `src/retrieval.py`:
 
 ### 10.4 Reproduction Commands
 
-#### Run the entire test suite (44 tests):
-```powershell
-.venv-hf-fix\Scripts\python.exe -m pytest tests/
+All commands below assume your active Python environment has `requirements.txt` installed.
+
+#### 1. Run the entire test suite:
+```bash
+python -m pytest tests/
 ```
 
-#### Run and compare all 4 retrieval configurations in MLflow:
-```powershell
-.venv-hf-fix\Scripts\python.exe -m src.evaluation --run-all-configs
+#### 2. Run the supervised intent-classification pipeline:
+```bash
+python -m src.intent_classification
+```
+This trains the Logistic Regression classifier and baseline, computes evaluation metrics on the held-out test split, exports the JSON report to `reports/intent_classification_evaluation.json`, and logs the model artifact to the MLflow experiment `rvce-campus-intent-classification`.
+
+#### 3. Run and compare all 4 retrieval configurations on the query benchmark:
+```bash
+python -m src.evaluation --run-all-configs
 ```
 
-#### Run labelled ground-truth evaluation:
-```powershell
-.venv-hf-fix\Scripts\python.exe -m src.evaluation --run-labelled --retriever tfidf
-.venv-hf-fix\Scripts\python.exe -m src.evaluation --run-labelled --retriever semantic
-.venv-hf-fix\Scripts\python.exe -m src.evaluation --run-labelled --retriever hybrid
+#### 4. Run labelled ground-truth retrieval evaluation (Recall@3, Precision@3, MRR, nDCG@3):
+```bash
+python -m src.evaluation --run-labelled --retriever tfidf
+python -m src.evaluation --run-labelled --retriever semantic
+python -m src.evaluation --run-labelled --retriever hybrid
 ```
 
-#### Launch local MLflow UI:
-```powershell
-.venv-hf-fix\Scripts\python.exe -m mlflow ui --port 5000
+#### 5. Launch the application (FastAPI backend + Web UI):
+```bash
+python -m uvicorn src.api:app --host 127.0.0.1 --port 8000
 ```
-Then navigate to [http://127.0.0.1:5000](http://127.0.0.1:5000) to view runs, parameters, metrics, and logged model artifacts.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser.
+
+#### 6. Launch local MLflow Tracking UI:
+```bash
+python -m mlflow ui --port 5000
+```
+Then navigate to [http://127.0.0.1:5000](http://127.0.0.1:5000) to inspect tracked runs, metrics, parameters, and logged model artifacts across `rvce-campus-retrieval-benchmark` and `rvce-campus-intent-classification`.
 
 

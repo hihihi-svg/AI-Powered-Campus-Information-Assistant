@@ -1,0 +1,378 @@
+{
+  "timestamp": "2026-10-14T15:44:35Z",
+  "dataset": {
+    "path": "data\\queries\\campus_queries.csv",
+    "checksum_sha256": "3fa3c321d182",
+    "train_samples": 32,
+    "test_samples": 8,
+    "class_labels": [
+      "academics_exams",
+      "admissions",
+      "departments_faculty",
+      "facilities_hostels",
+      "fees_finance",
+      "general_college_info",
+      "placements_careers",
+      "student_services_clubs"
+    ]
+  },
+  "evaluation_limitation": "Preliminary Evaluation Warning: Evaluation was conducted on a test set of exactly 8 samples (1 per intent class). These results serve as a functional baseline smoke-test and pipeline verification; they are not statistically significant for claiming production-level generalization.",
+  "models": {
+    "dummy_baseline": {
+      "metrics": {
+        "accuracy": 0.125,
+        "macro_f1": 0.0278,
+        "weighted_f1": 0.0278,
+        "macro_precision": 0.0156,
+        "macro_recall": 0.125
+      },
+      "per_class": {
+        "academics_exams": {
+          "precision": 0.125,
+          "recall": 1.0,
+          "f1_score": 0.2222,
+          "support": 1
+        },
+        "admissions": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 1
+        },
+        "departments_faculty": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 1
+        },
+        "facilities_hostels": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 1
+        },
+        "fees_finance": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 1
+        },
+        "general_college_info": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 1
+        },
+        "placements_careers": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 1
+        },
+        "student_services_clubs": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 1
+        }
+      },
+      "confusion_matrix": [
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "mlflow_run": {
+        "run_id": "e500894bb337440587fd473cb1f28c74",
+        "run_name": "dummy-most-frequent-baseline",
+        "experiment_name": "rvce-campus-intent-classification",
+        "artifact_uri": "file:///C:/Users/lalan/Desktop/AI-Powered-Campus-Information-Assistant/mlruns/251047911347369820/e500894bb337440587fd473cb1f28c74/artifacts",
+        "model_uri": null,
+        "model_reload_verified": false
+      }
+    },
+    "logistic_regression": {
+      "metrics": {
+        "accuracy": 0.375,
+        "macro_f1": 0.2917,
+        "weighted_f1": 0.2917,
+        "macro_precision": 0.25,
+        "macro_recall": 0.375
+      },
+      "per_class": {
+        "academics_exams": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 1
+        },
+        "admissions": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 1
+        },
+        "departments_faculty": {
+          "precision": 0.5,
+          "recall": 1.0,
+          "f1_score": 0.6667,
+          "support": 1
+        },
+        "facilities_hostels": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 1
+        },
+        "fees_finance": {
+          "precision": 0.5,
+          "recall": 1.0,
+          "f1_score": 0.6667,
+          "support": 1
+        },
+        "general_college_info": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 1
+        },
+        "placements_careers": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 1
+        },
+        "student_services_clubs": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 1
+        }
+      },
+      "confusion_matrix": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "predictions": [
+        {
+          "query_id": "Q005",
+          "query_text": "cutoff rank for cse branch in kcet round 2",
+          "true_intent": "admissions",
+          "predicted_intent": "student_services_clubs",
+          "correct": false
+        },
+        {
+          "query_id": "Q010",
+          "query_text": "where to submit the fee challan receipt after online payment",
+          "true_intent": "fees_finance",
+          "predicted_intent": "fees_finance",
+          "correct": true
+        },
+        {
+          "query_id": "Q015",
+          "query_text": "Where can I download the autonomous 2022 scheme syllabus for mechanical?",
+          "true_intent": "academics_exams",
+          "predicted_intent": "student_services_clubs",
+          "correct": false
+        },
+        {
+          "query_id": "Q020",
+          "query_text": "Does the MCA department offer electives in cloud computing?",
+          "true_intent": "departments_faculty",
+          "predicted_intent": "departments_faculty",
+          "correct": true
+        },
+        {
+          "query_id": "Q025",
+          "query_text": "Can students with an active backlog sit for mass recruiter drives?",
+          "true_intent": "placements_careers",
+          "predicted_intent": "facilities_hostels",
+          "correct": false
+        },
+        {
+          "query_id": "Q030",
+          "query_text": "is mess food fee included in hostel charges or paid separately?",
+          "true_intent": "facilities_hostels",
+          "predicted_intent": "fees_finance",
+          "correct": false
+        },
+        {
+          "query_id": "Q035",
+          "query_text": "who to contact for organizing an inter-college cultural fest event?",
+          "true_intent": "student_services_clubs",
+          "predicted_intent": "departments_faculty",
+          "correct": false
+        },
+        {
+          "query_id": "Q040",
+          "query_text": "who is the current principal of the college?",
+          "true_intent": "general_college_info",
+          "predicted_intent": "general_college_info",
+          "correct": true
+        }
+      ],
+      "mlflow_run": {
+        "run_id": "30851de1f3ec41ae9e3b6442c46d0f34",
+        "run_name": "tfidf-logistic-regression",
+        "experiment_name": "rvce-campus-intent-classification",
+        "artifact_uri": "file:///C:/Users/lalan/Desktop/AI-Powered-Campus-Information-Assistant/mlruns/251047911347369820/30851de1f3ec41ae9e3b6442c46d0f34/artifacts",
+        "model_uri": "models:/m-5c24f36bf5434657946e481c6d6c3db1",
+        "model_reload_verified": true
+      }
+    }
+  }
+}
