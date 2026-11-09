@@ -39,7 +39,7 @@ def validate_url(url: str) -> bool:
         return False
     try:
         parsed = urlparse(url)
-        return bool(parsed.scheme in ("http", "https") and parsed.netloc)
+        return bool(parsed.scheme in ("http", "https", "gmail") and parsed.netloc)
     except Exception:
         return False
 

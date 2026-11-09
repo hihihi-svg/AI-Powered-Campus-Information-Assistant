@@ -40,6 +40,11 @@ mlruns/
 reports/simulated_degraded_corpus.jsonl
 scratch/
 
+# Credentials, tokens, and OAuth secrets
+secrets/
+*credentials*.json
+*token*.json
+
 # OS files
 .DS_Store
 Thumbs.db

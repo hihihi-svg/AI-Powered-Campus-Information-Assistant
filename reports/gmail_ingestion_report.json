@@ -1,0 +1,31 @@
+{
+  "status": "ok",
+  "execution_timestamp": "2026-11-09T15:17:32.768101+00:00",
+  "dry_run": false,
+  "search_query": "from:(*@rvce.edu.in OR *@rvei.edu.in OR *@vtu.ac.in) -label:SPAM -label:TRASH after:2026/11/08",
+  "all_history_mode": false,
+  "incremental_mode": true,
+  "total_messages_scanned": 8,
+  "already_processed_messages": 8,
+  "candidate_messages_evaluated": 0,
+  "candidate_messages": 0,
+  "relevant_emails_found": 0,
+  "accepted_notices": 0,
+  "rejected_noise_emails": 0,
+  "rejected_noise": 0,
+  "emails_stored": 0,
+  "new_email_records": 0,
+  "pdf_attachments_found": 0,
+  "pdf_attachments_extracted": 0,
+  "new_attachment_records": 0,
+  "failed_attachment_extractions": 0,
+  "failed_message_ingestions": 0,
+  "index_updated": false,
+  "newly_indexed_documents": [],
+  "corpus_statistics": {
+    "total_documents": 107,
+    "email_documents": 35,
+    "email_attachment_documents": 12,
+    "web_documents": 60
+  }
+}

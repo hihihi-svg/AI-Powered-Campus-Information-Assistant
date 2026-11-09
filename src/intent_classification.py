@@ -404,6 +404,140 @@ def train_and_evaluate_all(
     return overall_report
 
 
+INTENT_DISPLAY_LABELS: Dict[str, str] = {
+    "admissions": "Admissions",
+    "fees_finance": "Fees and Finance",
+    "academics_exams": "Academics and Exams",
+    "departments_faculty": "Departments and Faculty",
+    "placements_careers": "Placements and Careers",
+    "facilities_hostels": "Facilities and Hostels",
+    "student_services_clubs": "Student Services and Clubs",
+    "general_college_info": "General College Information",
+    "unknown": "Unknown",
+}
+
+_CACHED_INTENT_PIPELINE: Optional[Pipeline] = None
+
+
+def get_intent_classifier(
+    dataset_path: str | Path = DEFAULT_DATASET_PATH,
+    force_reload: bool = False,
+) -> Optional[Pipeline]:
+    """Load the existing trained Logistic Regression intent classifier (or fit from campus_queries.csv train split)."""
+    global _CACHED_INTENT_PIPELINE
+    if _CACHED_INTENT_PIPELINE is not None and not force_reload:
+        return _CACHED_INTENT_PIPELINE
+
+    # 1. Try loading persisted MLflow sklearn model pickle from mlruns if present
+    import pickle
+
+    repo_root = Path(__file__).resolve().parent.parent
+    mlruns_dir = repo_root / "mlruns"
+    if mlruns_dir.exists():
+        for pkl_path in sorted(mlruns_dir.rglob("model.pkl"), key=lambda p: p.stat().st_mtime, reverse=True):
+            try:
+                with pkl_path.open("rb") as f:
+                    loaded = pickle.load(f)
+                if isinstance(loaded, Pipeline) and hasattr(loaded, "predict_proba"):
+                    _CACHED_INTENT_PIPELINE = loaded
+                    return _CACHED_INTENT_PIPELINE
+            except Exception:
+                continue
+
+    # 2. Fallback: fit the exact LogisticRegression pipeline on the existing train split of campus_queries.csv
+    try:
+        data_file = Path(dataset_path)
+        if not data_file.exists():
+            data_file = repo_root / DEFAULT_DATASET_PATH
+        train_rows, _, _ = load_query_dataset(data_file)
+        pipeline = build_logistic_regression_pipeline()
+        pipeline.fit([r["query_text"] for r in train_rows], [r["intent"] for r in train_rows])
+        _CACHED_INTENT_PIPELINE = pipeline
+        return _CACHED_INTENT_PIPELINE
+    except Exception as exc:
+        logger.warning("Could not initialize intent classifier: %s", type(exc).__name__)
+        return None
+
+
+def classify_query_intent(
+    question: str,
+    confidence_threshold: float = 0.14,
+    dataset_path: str | Path = DEFAULT_DATASET_PATH,
+) -> Dict[str, Any]:
+    """Classify a user query using the trained TF-IDF + Logistic Regression pipeline with safe unknown fallback."""
+    cleaned = (question or "").strip()
+    if not cleaned:
+        return {
+            "intent": "unknown",
+            "intent_label": "Unknown",
+            "confidence": 0.0,
+            "is_confident": False,
+            "routing": "general_fallback",
+            "model": "logistic_regression_tfidf",
+        }
+
+    pipeline = get_intent_classifier(dataset_path=dataset_path)
+    if pipeline is None:
+        return {
+            "intent": "unknown",
+            "intent_label": "Unknown",
+            "confidence": 0.0,
+            "is_confident": False,
+            "routing": "general_fallback",
+            "model": "unavailable",
+        }
+
+    try:
+        tfidf_step = pipeline.named_steps.get("tfidf")
+        if tfidf_step is not None:
+            vec = tfidf_step.transform([cleaned])
+            if vec.nnz == 0:
+                return {
+                    "intent": "unknown",
+                    "intent_label": "Unknown",
+                    "confidence": 0.0,
+                    "is_confident": False,
+                    "routing": "general_fallback",
+                    "model": "logistic_regression_tfidf",
+                }
+
+        probs = pipeline.predict_proba([cleaned])[0]
+        classes = list(pipeline.classes_)
+        best_idx = int(probs.argmax())
+        pred_intent = str(classes[best_idx])
+        confidence = round(float(probs[best_idx]), 4)
+
+        if confidence < confidence_threshold:
+            return {
+                "intent": "unknown",
+                "predicted_raw_intent": pred_intent,
+                "intent_label": "Unknown",
+                "confidence": confidence,
+                "is_confident": False,
+                "routing": "general_fallback",
+                "model": "logistic_regression_tfidf",
+            }
+
+        return {
+            "intent": pred_intent,
+            "intent_label": INTENT_DISPLAY_LABELS.get(pred_intent, pred_intent),
+            "confidence": confidence,
+            "is_confident": True,
+            "routing": "intent_guided",
+            "model": "logistic_regression_tfidf",
+        }
+    except Exception as exc:
+        logger.warning("Intent classification failed safely: %s", type(exc).__name__)
+        return {
+            "intent": "unknown",
+            "intent_label": "Unknown",
+            "confidence": 0.0,
+            "is_confident": False,
+            "routing": "general_fallback",
+            "model": "logistic_regression_tfidf",
+        }
+
+
 def main() -> None:
     """CLI entrypoint for standalone intent classification experiment."""
     parser = argparse.ArgumentParser(

@@ -59,9 +59,9 @@
           <div class="strategy-row">
             <label for="strategy-select" class="strategy-label">Retrieval Strategy:</label>
             <select id="strategy-select" name="strategy" class="strategy-select" aria-label="Select retrieval strategy">
-              <option value="tfidf" selected>TF-IDF (Default Baseline)</option>
+              <option value="hybrid" selected>Hybrid (TF-IDF + Dense Linear)</option>
               <option value="semantic">Dense Semantic (all-MiniLM-L6-v2)</option>
-              <option value="hybrid">Hybrid (TF-IDF + Dense Linear)</option>
+              <option value="tfidf">TF-IDF (Keyword Baseline)</option>
               <option value="hybrid_rerank">Hybrid + Cross-Encoder Rerank</option>
             </select>
           </div>

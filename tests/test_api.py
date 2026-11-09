@@ -141,3 +141,105 @@ def test_ask_invalid_question_returns_400():
 
     assert response.status_code == 400
     assert "Question must be a non-empty string." in response.json()["detail"]
+
+
+def test_ask_with_gpt_strategy():
+    from unittest.mock import patch
+
+    mock_gpt_result = {
+        "answer": "Mocked GPT Answer from campus context.",
+        "evidence": [
+            {
+                "title": "Admissions Guide",
+                "url": "https://rvce.edu.in/admissions",
+                "heading": "Admission Process",
+                "text": "Admissions are conducted through COMEDK and KEA.",
+                "relevance_score": 0.9,
+            }
+        ],
+        "sources": [{"title": "Admissions Guide", "url": "https://rvce.edu.in/admissions", "heading": "Admission Process"}],
+        "strategy": "gpt",
+    }
+
+    with patch("src.api.answer_question", return_value=mock_gpt_result):
+        response = client.post("/ask", json={"question": "How do admissions work?", "strategy": "gpt"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["answer"] == "Mocked GPT Answer from campus context."
+    assert payload["strategy"] == "gpt"
+    assert payload["abstention_status"] is False
+    assert len(payload["sources"]) == 1
+    assert len(payload["evidence"]) == 1
+
+
+def test_sync_status_endpoint():
+    response = client.get("/sync/status")
+    assert response.status_code == 200
+    payload = response.json()
+    assert "worker_running" in payload
+    assert "interval_seconds" in payload
+    assert "last_sync_status" in payload
+
+
+def test_sync_trigger_endpoint_non_blocking():
+    from unittest.mock import patch
+
+    mock_summary = {
+        "scanned": 4,
+        "processed_new": 1,
+        "skipped_existing": 3,
+        "index_updated": True,
+        "corpus_total_documents": 106,
+    }
+    with patch("src.api.gmail_sync_worker.sync_once", return_value=mock_summary) as mock_sync:
+        response = client.post("/sync/trigger")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "scheduled"
+    mock_sync.assert_called_once()
+
+
+def test_ask_gpt_surfaces_rate_limit_error_to_client():
+    from unittest.mock import patch
+    from src.generation import CLEAN_GENERATION_ERROR_MESSAGE
+
+    mock_error_result = {
+        "answer": CLEAN_GENERATION_ERROR_MESSAGE,
+        "evidence": [
+            {
+                "title": "RVCE Fee Structure",
+                "url": "https://rvce.edu.in/fees",
+                "heading": "CSE Fee Details",
+                "text": "The tuition fee for CSE is Rs 1,85,000 per year.",
+                "relevance_score": 0.75,
+            }
+        ],
+        "sources": [{"title": "RVCE Fee Structure", "url": "https://rvce.edu.in/fees", "heading": "CSE Fee Details"}],
+        "strategy": "gpt",
+        "error": {
+            "category": "insufficient_quota",
+            "code": "credit_balance_exhausted",
+            "error_code": "credit_balance_exhausted",
+            "message": CLEAN_GENERATION_ERROR_MESSAGE,
+            "retryable": False,
+        },
+    }
+
+    with patch("src.api.answer_question", return_value=mock_error_result):
+        response = client.post("/ask", json={"question": "What is the CSE fee?", "strategy": "gpt"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["strategy"] == "gpt"
+    assert payload["error"] is not None
+    assert payload["error"]["category"] == "insufficient_quota"
+    assert payload["error"]["error_code"] == "credit_balance_exhausted"
+    assert payload["error"]["retryable"] is False
+    assert payload["answer"] == CLEAN_GENERATION_ERROR_MESSAGE
+    assert "OpenAI" not in payload["answer"]
+    assert "429" not in payload["answer"]
+
+
+

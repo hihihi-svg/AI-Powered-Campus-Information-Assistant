@@ -28,8 +28,27 @@ logger = logging.getLogger("campus_pipeline.retrieval")
 
 DEFAULT_SEMANTIC_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L6-v2"
+DEFAULT_EMBEDDINGS_CACHE_PATH = "data/processed/corpus_semantic_embeddings.npy"
 _SEMANTIC_MODEL_CACHE: Dict[str, Any] = {}
 _CROSS_ENCODER_CACHE: Dict[str, Any] = {}
+
+
+def _resolve_local_model_path(model_name: str) -> str:
+    """Resolve the latest local snapshot directory for a model if available."""
+    cache_root = os.path.expanduser("~/.cache/huggingface/hub")
+    normalized_name = model_name.replace("/", "--")
+    candidate_hub_dir = os.path.join(cache_root, f"models--{normalized_name}")
+    snapshots_dir = os.path.join(candidate_hub_dir, "snapshots")
+    if os.path.isdir(snapshots_dir):
+        snapshots = [
+            os.path.join(snapshots_dir, s)
+            for s in os.listdir(snapshots_dir)
+            if os.path.isdir(os.path.join(snapshots_dir, s))
+        ]
+        if snapshots:
+            snapshots.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            return snapshots[0]
+    return model_name
 
 
 def _is_model_cached_locally(model_name: str) -> bool:
@@ -70,12 +89,15 @@ def _load_sentence_transformer(
     gracefully and log a clear warning instead of silently pretending retrieval
     succeeded.
     """
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
     from sentence_transformers import SentenceTransformer
 
     _ensure_model_is_cached(model_name)
+    resolved_path = _resolve_local_model_path(model_name)
     cache_key = f"{model_name}:{device}:{local_files_only}"
     if cache_key not in _SEMANTIC_MODEL_CACHE:
-        model = SentenceTransformer(model_name, device=device, local_files_only=local_files_only)
+        model = SentenceTransformer(resolved_path, device=device, local_files_only=local_files_only)
         _SEMANTIC_MODEL_CACHE[cache_key] = model
     return _SEMANTIC_MODEL_CACHE[cache_key]
 
@@ -86,18 +108,41 @@ def _load_cross_encoder(
     local_files_only: bool = True,
 ) -> Any:
     """Load a single CrossEncoder instance and cache it for reuse."""
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
     from sentence_transformers import CrossEncoder
 
     _ensure_model_is_cached(model_name)
+    resolved_path = _resolve_local_model_path(model_name)
     cache_key = f"{model_name}:{device}:{local_files_only}"
     if cache_key not in _CROSS_ENCODER_CACHE:
-        model = CrossEncoder(model_name, device=device, local_files_only=local_files_only)
+        model = CrossEncoder(resolved_path, device=device, local_files_only=local_files_only)
         _CROSS_ENCODER_CACHE[cache_key] = model
     return _CROSS_ENCODER_CACHE[cache_key]
 
 
 def _index_record_chunks(records: List[Dict[str, Any]]) -> List[DocumentChunk]:
     """Shared record-to-chunk conversion used by TF-IDF and semantic indexes."""
+    # Map parent email metadata by document_id and gmail_message_id so child PDF
+    # attachments inherit sender and subject metadata if not directly stored on the record.
+    email_meta_by_doc_id: Dict[str, Dict[str, Any]] = {}
+    email_meta_by_msg_id: Dict[str, Dict[str, Any]] = {}
+    for r in records:
+        if r.get("source_type") == "EMAIL" or str(r.get("document_id", "")).startswith("doc_email_"):
+            if r.get("source_type") != "EMAIL_ATTACHMENT" and not str(r.get("document_id", "")).startswith("doc_email_att_"):
+                meta = {
+                    "sender": r.get("sender"),
+                    "sender_name": r.get("sender_name"),
+                    "email_subject": r.get("title"),
+                    "received_at": r.get("received_at") or r.get("last_modified"),
+                    "document_date": r.get("document_date") or r.get("last_modified"),
+                    "parent_email_body": (r.get("content") or "")[:500],
+                }
+                if r.get("document_id"):
+                    email_meta_by_doc_id[str(r["document_id"])] = meta
+                if r.get("gmail_message_id"):
+                    email_meta_by_msg_id[str(r["gmail_message_id"])] = meta
+
     all_chunks: List[DocumentChunk] = []
     for r in records:
         if r.get("extraction_status") == "EMPTY":
@@ -105,7 +150,20 @@ def _index_record_chunks(records: List[Dict[str, Any]]) -> List[DocumentChunk]:
         content = r.get("content", "")
         if not content or not content.strip():
             continue
-        all_chunks.extend(chunk_document(r))
+
+        record_to_chunk = r
+        if r.get("source_type") == "EMAIL_ATTACHMENT" or str(r.get("document_id", "")).startswith("doc_email_att_"):
+            parent_meta = (
+                email_meta_by_doc_id.get(str(r.get("parent_document_id", "")))
+                or email_meta_by_msg_id.get(str(r.get("gmail_message_id", "")))
+            )
+            if parent_meta:
+                record_to_chunk = dict(r)
+                for k, v in parent_meta.items():
+                    if v and not record_to_chunk.get(k):
+                        record_to_chunk[k] = v
+
+        all_chunks.extend(chunk_document(record_to_chunk))
     return all_chunks
 
 
@@ -124,6 +182,53 @@ class DocumentChunk:
     last_modified: Optional[str] = None
     char_length: int = 0
     word_count: int = 0
+    source_type: Optional[str] = None
+    sender: Optional[str] = None
+    sender_name: Optional[str] = None
+    filename: Optional[str] = None
+    gmail_message_id: Optional[str] = None
+    parent_document_id: Optional[str] = None
+    document_date: Optional[str] = None
+    received_at: Optional[str] = None
+    published_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    event_dates: Optional[List[str]] = None
+    email_subject: Optional[str] = None
+    parent_email_body: Optional[str] = None
+
+
+def _chunk_to_result_dict(chunk: DocumentChunk, relevance_score: float) -> Dict[str, Any]:
+    """Convert a DocumentChunk and score into the standardized retrieval result dictionary."""
+    doc_id = str(chunk.document_id or chunk.source_url or chunk.document_title or "unknown_document").strip() or "unknown_document"
+    doc_title = chunk.document_title or ""
+    result: Dict[str, Any] = {
+        "chunk_id": chunk.chunk_id,
+        "document_id": doc_id,
+        "text": chunk.text,
+        "document_title": doc_title,
+        "source_title": doc_title or "Unknown source",
+        "source_url": chunk.source_url or "",
+        "heading": chunk.heading or "unknown_heading",
+        "topic": chunk.topic,
+        "last_modified": chunk.last_modified,
+        "document_date": getattr(chunk, "document_date", None) or chunk.last_modified,
+        "received_at": getattr(chunk, "received_at", None),
+        "published_at": getattr(chunk, "published_at", None),
+        "updated_at": getattr(chunk, "updated_at", None),
+        "event_dates": list(getattr(chunk, "event_dates", None) or []),
+        "source_type": getattr(chunk, "source_type", None),
+        "sender": getattr(chunk, "sender", None),
+        "sender_name": getattr(chunk, "sender_name", None),
+        "filename": getattr(chunk, "filename", None),
+        "gmail_message_id": getattr(chunk, "gmail_message_id", None),
+        "parent_document_id": getattr(chunk, "parent_document_id", None),
+        "email_subject": getattr(chunk, "email_subject", None),
+        "relevance_score": round(float(relevance_score), 4),
+    }
+    parent_body = getattr(chunk, "parent_email_body", None)
+    if parent_body:
+        result["parent_email_body"] = parent_body
+    return result
 
 
 def _sub_chunk_section(
@@ -200,6 +305,95 @@ def _sub_chunk_section(
     return chunks
 
 
+def _normalize_ocr_glued_text(text: str) -> str:
+    """Repair OCR-glued tokens and digit-letter substitutions in scanned campus PDFs."""
+    if not text:
+        return ""
+    cleaned = text
+    ocr_fixes = {
+        "H0STEL": "HOSTEL",
+        "PGcET": "PGCET",
+        "1oth": "10th",
+        "RVcE": "RVCE",
+        "RvcE": "RVCE",
+        "Finaily": "Finally",
+        "Answcr Paper Vicwing": "Answer Paper Viewing",
+        "Answcr": "Answer",
+        "Vicwing": "Viewing",
+        "crcdentials": "credentials",
+        "arrivc": "arrive",
+        "Incontinuationtotheearlier": "In continuation to the earlier",
+        "MANDATORYDOCUMENTSTOBESUBMITTEDATTHETIMEOFADMISSION": "MANDATORY DOCUMENTS TO BE SUBMITTED AT THE TIME OF ADMISSION",
+        "ADMISSIONPROCESS&FEESDETAILSFOR1StYEARM.TECH&MCA": "ADMISSION PROCESS & FEES DETAILS FOR 1st YEAR M.TECH & MCA",
+        "ADMISSIONPROCESS&FEESDETAILSFOR": "ADMISSION PROCESS & FEES DETAILS FOR ",
+        "FEESDETAILSFOR": "FEES DETAILS FOR ",
+        "FORBOYSHOSTELDETAILSCONTACT": "FOR BOYS HOSTEL DETAILS CONTACT",
+        "FORGIRLSHOSTELDETAILSCONTACT": "FOR GIRLS HOSTEL DETAILS CONTACT",
+        "COLLEGETRANSPORTATIONCHARGES": "COLLEGE TRANSPORTATION CHARGES",
+        "HOWTOREACHRVCOLLEGEOFENGINEERING": "HOW TO REACH RV COLLEGE OF ENGINEERING",
+        "ForPGCETAllotted": "For PGCET Allotted",
+        "ForManagementQuota": "For Management Quota",
+        "AllottedStudents": "Allotted Students",
+        "KEAConfirmationSlip": "KEA Confirmation Slip",
+        "VerificationSlip": "Verification Slip",
+        "VerificationSlipDownloaded": "Verification Slip Downloaded",
+        "VerificationSlipdownloaded": "Verification Slip downloaded",
+        "fromKEA": "from KEA",
+        "theranksheetofPGCETorValid": "the rank sheet of PGCET or Valid",
+        "OriginalMarksCardsof10thand12th": "Original Marks Cards of 10th and 12th",
+        "Allotmentorderandfeespaidreceipthastobedownloaded": "Allotment order and fees paid receipt has to be downloaded ",
+        "necessarydocuments": "necessary documents",
+        "Originaldocumentswillbedone": "Original documents will be done",
+        "Original documentswillbe done": "Original documents will be done",
+        "ReportatCivil": "Report at Civil ",
+        "EngineeringDepartment": "Engineering Department ",
+        "TakeaTokenandwaitforyourturn": "Take a token and wait for your turn ",
+        "OnlineAdmissionEntryofApplicationForm": "Online Admission Entry of Application Form ",
+        "KrishnaGardenHostel": "Krishna Garden Hostel",
+        "ForGirlsStudentsstayingin": "For Girls Students staying in ",
+        "GirlsStudentsstayingin": "Girls Students staying in ",
+        "StudentloginofKE Aisrequired,alongwith": "Student login of KEA is required, along with",
+        "togetOTP": "to get OTP",
+        "canbepaid": "can be paid",
+        "Ifpaying thefeesat": "If paying the fees at",
+        "intheformofDD,then": "in the form of DD, then",
+        "theback sideofDD.Thesame tobehandedover": "the back side of DD. The same to be handed over",
+        "Cashierat": "Cashier at",
+        "Studentwill bedirectedto": "Student will be directed to",
+        "Labin": "Lab in",
+        "todownload": "to download",
+        "Downloadingthe": "Downloading the",
+        "isrequiredput": "is required to put",
+        "onceagainreport": "once again report",
+        "Tokenwill beissued andwaitfortheturnfor": "Token will be issued and wait for the turn for",
+        "Entryof": "Entry of",
+        "Aftersuccessfulentryof applicationform,Printoutof": "After successful entry of application form, Printout of",
+        "applicationwillbegiven,then,thecandidate&parent haveto": "application will be given, then, the candidate & parent have to",
+        "asgivenbelowtothe": "as given below to the",
+        "obtaintheacknowledgementforsubmitteddocumentsfromtheadmissionauthority": "obtain the acknowledgement for submitted documents from the admission authority",
+    }
+    for bad, good in ocr_fixes.items():
+        cleaned = cleaned.replace(bad, good)
+
+    # Split glued CamelCase / Acronym-Word boundaries (e.g., "SlipandVerification" -> "Slip and Verification")
+    cleaned = re.sub(r"([a-z]{2,})([A-Z][a-z]{2,})", r"\1 \2", cleaned)
+    cleaned = re.sub(r"([A-Z]{2,})([A-Z][a-z]{3,})", r"\1 \2", cleaned)
+    cleaned = re.sub(r"\b(Step)(\d+)\b", r"\1 \2", cleaned)
+    return cleaned
+
+
+def _strip_distribution_footer_for_search(text: str) -> str:
+    """Remove boilerplate 'Copy to: ... Chief Wardens, RVCE Boys & Girls Hostel ...' footers from search index text."""
+    if not text:
+        return ""
+    return re.sub(
+        r"Copy\s+to\s*:.*?(?:Boys\s*&\s*Girls\s*Hostel|for\s+information\s+and\s+needful).*$",
+        "",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    ).strip()
+
+
 def chunk_document(
     record: Dict[str, Any],
     max_chunk_chars: int = 1200,
@@ -216,12 +410,34 @@ def chunk_document(
     - Last-modified metadata
     - Topic label
     """
+    from src.temporal import enrich_record_temporal_metadata, extract_dates_from_text, parse_datetime_utc
+
     doc_id = record.get("document_id", "unknown_doc")
     source_url = record.get("source_url", "")
     title = (record.get("title") or "RVCE Document").strip()
     topic = record.get("topic")
-    last_mod = record.get("last_modified")
-    content = record.get("content", "").strip()
+    content = _normalize_ocr_glued_text(record.get("content", "").strip())
+    source_type = record.get("source_type")
+    sender = record.get("sender")
+    sender_name = record.get("sender_name")
+    filename = record.get("filename")
+    gmail_message_id = record.get("gmail_message_id")
+    parent_document_id = record.get("parent_document_id")
+    email_subject = record.get("email_subject")
+    parent_email_body = record.get("parent_email_body")
+
+    temporal_meta = enrich_record_temporal_metadata(record)
+    doc_date = temporal_meta.get("document_date")
+    received_at = temporal_meta.get("received_at")
+    published_at = temporal_meta.get("published_at")
+    updated_at = temporal_meta.get("updated_at")
+    last_mod = record.get("last_modified") if "last_modified" in record else temporal_meta.get("last_modified")
+    doc_dt = parse_datetime_utc(doc_date)
+    default_year = doc_dt.year if doc_dt else None
+
+    # Build optional extra metadata prefix for searchable_text when email/attachment fields exist
+    extra_meta_parts = [p for p in (sender_name, sender, filename, email_subject) if p and str(p).strip() and str(p).strip() != title]
+    extra_meta_prefix = f" | {' | '.join(str(p).strip() for p in extra_meta_parts)}" if extra_meta_parts else ""
 
     if not content or len(content) < min_chunk_chars:
         return []
@@ -311,7 +527,9 @@ def chunk_document(
         if len(cleaned_block) <= max_chunk_chars:
             if len(cleaned_block) >= min_chunk_chars:
                 chunk_id = f"{doc_id}_c{chunk_counter:02d}"
-                searchable = f"{title} | {heading}\n{cleaned_block}"
+                searchable_body = _strip_distribution_footer_for_search(cleaned_block) or cleaned_block
+                searchable = f"{title} | {heading}{extra_meta_prefix}\n{searchable_body}"
+                chunk_events = extract_dates_from_text(f"{title} {heading}\n{cleaned_block}", default_year=default_year)
                 chunks.append(
                     DocumentChunk(
                         chunk_id=chunk_id,
@@ -325,6 +543,19 @@ def chunk_document(
                         last_modified=last_mod,
                         char_length=len(cleaned_block),
                         word_count=len(cleaned_block.split()),
+                        source_type=source_type,
+                        sender=sender,
+                        sender_name=sender_name,
+                        filename=filename,
+                        gmail_message_id=gmail_message_id,
+                        parent_document_id=parent_document_id,
+                        document_date=doc_date,
+                        received_at=received_at,
+                        published_at=published_at,
+                        updated_at=updated_at,
+                        event_dates=chunk_events or temporal_meta.get("event_dates"),
+                        email_subject=email_subject,
+                        parent_email_body=parent_email_body,
                     )
                 )
                 chunk_counter += 1
@@ -338,7 +569,9 @@ def chunk_document(
             )
             for sub_text in sub_chunks:
                 chunk_id = f"{doc_id}_c{chunk_counter:02d}"
-                searchable = f"{title} | {heading}\n{sub_text}"
+                searchable_body = _strip_distribution_footer_for_search(sub_text) or sub_text
+                searchable = f"{title} | {heading}{extra_meta_prefix}\n{searchable_body}"
+                chunk_events = extract_dates_from_text(f"{title} {heading}\n{sub_text}", default_year=default_year)
                 chunks.append(
                     DocumentChunk(
                         chunk_id=chunk_id,
@@ -352,6 +585,19 @@ def chunk_document(
                         last_modified=last_mod,
                         char_length=len(sub_text),
                         word_count=len(sub_text.split()),
+                        source_type=source_type,
+                        sender=sender,
+                        sender_name=sender_name,
+                        filename=filename,
+                        gmail_message_id=gmail_message_id,
+                        parent_document_id=parent_document_id,
+                        document_date=doc_date,
+                        received_at=received_at,
+                        published_at=published_at,
+                        updated_at=updated_at,
+                        event_dates=chunk_events or temporal_meta.get("event_dates"),
+                        email_subject=email_subject,
+                        parent_email_body=parent_email_body,
                     )
                 )
                 chunk_counter += 1
@@ -406,13 +652,7 @@ class TFIDFRetriever:
         if not os.path.exists(dataset_path):
             raise FileNotFoundError(f"Dataset path not found: {dataset_path}")
 
-        records = []
-        with open(dataset_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    records.append(json.loads(line))
-
+        records = _load_dataset_records(dataset_path)
         return self.index_records(records)
 
     @staticmethod
@@ -499,17 +739,7 @@ class TFIDFRetriever:
                 continue
 
             chunk = self.chunks[idx]
-            result = {
-                "chunk_id": chunk.chunk_id,
-                "document_id": str(chunk.document_id or chunk.source_url or chunk.document_title or "unknown_document").strip() or "unknown_document",
-                "text": chunk.text,
-                "document_title": chunk.document_title or "",
-                "source_url": chunk.source_url or "",
-                "heading": chunk.heading or "unknown_heading",
-                "topic": chunk.topic,
-                "last_modified": chunk.last_modified,
-                "relevance_score": round(score, 4),
-            }
+            result = _chunk_to_result_dict(chunk, score)
             ranked_results.append(result)
 
         deduplicated_results = []
@@ -569,12 +799,23 @@ class SemanticRetriever:
         records = _load_dataset_records(dataset_path)
         return self.index_records(records)
 
-    def encode_corpus(self, batch_size: int = 32) -> Optional[np.ndarray]:
-        """Encode all indexed chunks once and cache embeddings in memory."""
+    def encode_corpus(self, batch_size: int = 32, cache_path: Optional[str] = None) -> Optional[np.ndarray]:
+        """Encode all indexed chunks once and cache embeddings in memory and on disk."""
         if self.document_embeddings is not None:
             return self.document_embeddings
         if not self.chunks:
             return None
+
+        effective_cache_path = cache_path or DEFAULT_EMBEDDINGS_CACHE_PATH
+        if os.path.isfile(effective_cache_path):
+            try:
+                cached = np.load(effective_cache_path)
+                if isinstance(cached, np.ndarray) and cached.shape[0] == len(self.chunks) and cached.ndim == 2:
+                    self.document_embeddings = cached
+                    logger.info("Loaded %d semantic embeddings from cache: %s", len(self.chunks), effective_cache_path)
+                    return self.document_embeddings
+            except Exception as load_err:
+                logger.warning("Failed to load cached embeddings from %s: %s", effective_cache_path, load_err)
 
         self._load_model()
         if self.model_error or self.model is None:
@@ -590,6 +831,12 @@ class SemanticRetriever:
                 device=self.device,
                 show_progress_bar=False,
             )
+            try:
+                os.makedirs(os.path.dirname(effective_cache_path), exist_ok=True)
+                np.save(effective_cache_path, self.document_embeddings)
+                logger.info("Saved %d semantic embeddings to cache: %s", len(self.chunks), effective_cache_path)
+            except Exception as save_err:
+                logger.warning("Failed to save embeddings to %s: %s", effective_cache_path, save_err)
             return self.document_embeddings
         except Exception as exc:  # pragma: no cover - exercised by targeted tests
             self.model_error = f"Embedding failed for {self.model_name}: {exc}"
@@ -610,6 +857,11 @@ class SemanticRetriever:
         doc_embeddings = self.encode_corpus()
         if doc_embeddings is None:
             logger.warning("Semantic retrieval is unavailable: %s", self.model_error or "unknown model error")
+            return []
+
+        self._load_model()
+        if self.model_error or self.model is None:
+            logger.warning("Query embedding model unavailable: %s", self.model_error or "unknown model error")
             return []
 
         try:
@@ -635,19 +887,7 @@ class SemanticRetriever:
             if score < score_threshold:
                 continue
             chunk = self.chunks[int(idx)]
-            ranked_results.append(
-                {
-                    "chunk_id": chunk.chunk_id,
-                    "document_id": str(chunk.document_id or chunk.source_url or chunk.document_title or "unknown_document").strip() or "unknown_document",
-                    "text": chunk.text,
-                    "document_title": chunk.document_title or "",
-                    "source_url": chunk.source_url or "",
-                    "heading": chunk.heading or "unknown_heading",
-                    "topic": chunk.topic,
-                    "last_modified": chunk.last_modified,
-                    "relevance_score": round(score, 4),
-                }
-            )
+            ranked_results.append(_chunk_to_result_dict(chunk, score))
 
         deduplicated_results: List[Dict[str, Any]] = []
         seen_keys = set()
@@ -862,6 +1102,14 @@ _DEFAULT_SEMANTIC_RETRIEVER_CACHE: Dict[str, SemanticRetriever] = {}
 _DEFAULT_HYBRID_RETRIEVER_CACHE: Dict[str, HybridRetriever] = {}
 
 
+def reset_retriever_caches() -> None:
+    """Clear all in-memory retriever caches so fresh dataset changes are re-indexed."""
+    _DEFAULT_RETRIEVER_CACHE.clear()
+    _DEFAULT_SEMANTIC_RETRIEVER_CACHE.clear()
+    _DEFAULT_HYBRID_RETRIEVER_CACHE.clear()
+    logger.info("Retriever in-memory caches successfully reset.")
+
+
 def get_default_retriever(
     dataset_path: str = "data/processed/campus_documents.jsonl",
 ) -> TFIDFRetriever:
@@ -922,11 +1170,86 @@ def _load_dataset_records(dataset_path: str = "data/processed/campus_documents.j
         raise FileNotFoundError(f"Dataset path not found: {dataset_path}")
     records: List[Dict[str, Any]] = []
     with open(dataset_path, "r", encoding="utf-8") as f:
-        for line in f:
+        for line_num, line in enumerate(f, start=1):
             line = line.strip()
-            if line:
+            if not line:
+                continue
+            try:
                 records.append(json.loads(line))
+            except json.JSONDecodeError:
+                logger.warning("Skipping malformed JSONL line %d in %s", line_num, dataset_path)
     return records
+
+
+def enrich_with_companion_chunks(
+    results: List[Dict[str, Any]],
+    retriever: Any = None,
+    max_companions: int = 2,
+) -> List[Dict[str, Any]]:
+    """Pair retrieved email notices with their PDF attachment chunks (and vice versa).
+
+    Many campus email bodies simply say 'Kindly find the attached circular regarding X',
+    while the substantive schedule/fee details live in the child PDF attachment record
+    sharing the same ``gmail_message_id`` or ``parent_document_id``.
+    """
+    if not results or retriever is None:
+        return list(results)
+
+    chunks: List[DocumentChunk] = getattr(retriever, "chunks", None) or getattr(
+        getattr(retriever, "tfidf_retriever", None), "chunks", []
+    )
+    if not chunks or not isinstance(chunks, list):
+        return list(results)
+
+    existing_chunk_ids = {r.get("chunk_id") for r in results if r.get("chunk_id")}
+    target_msg_ids = {r.get("gmail_message_id") for r in results if r.get("gmail_message_id")}
+    target_doc_ids = {r.get("document_id") for r in results if r.get("document_id")}
+    target_parent_ids = {r.get("parent_document_id") for r in results if r.get("parent_document_id")}
+
+    if not target_msg_ids and not target_parent_ids:
+        # Also check gmail://messages/<id> URLs if gmail_message_id was not explicitly set
+        for r in results:
+            url = str(r.get("source_url") or "")
+            m = re.match(r"^gmail://messages/([^/]+)", url)
+            if m:
+                target_msg_ids.add(m.group(1))
+
+    if not target_msg_ids and not target_parent_ids:
+        return list(results)
+
+    enriched = list(results)
+    added = 0
+    base_score = float(results[0].get("relevance_score", 0.1) or 0.1)
+
+    for chunk in chunks:
+        if added >= max_companions:
+            break
+        if chunk.chunk_id in existing_chunk_ids:
+            continue
+
+        c_msg_id = getattr(chunk, "gmail_message_id", None)
+        if not c_msg_id and chunk.source_url:
+            m = re.match(r"^gmail://messages/([^/]+)", str(chunk.source_url))
+            if m:
+                c_msg_id = m.group(1)
+
+        c_parent_id = getattr(chunk, "parent_document_id", None)
+        c_doc_id = chunk.document_id
+
+        is_companion = (
+            (c_msg_id and c_msg_id in target_msg_ids)
+            or (c_parent_id and c_parent_id in target_doc_ids)
+            or (c_doc_id and c_doc_id in target_parent_ids)
+        )
+        if is_companion:
+            existing_chunk_ids.add(chunk.chunk_id)
+            comp_dict = _chunk_to_result_dict(chunk, max(0.05, base_score * 0.85))
+            if not comp_dict.get("gmail_message_id") and c_msg_id:
+                comp_dict["gmail_message_id"] = c_msg_id
+            enriched.append(comp_dict)
+            added += 1
+
+    return enriched
 
 
 def query_campus_knowledge(

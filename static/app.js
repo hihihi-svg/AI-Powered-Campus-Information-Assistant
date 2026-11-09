@@ -8,6 +8,8 @@ const chatMessages = document.getElementById('chat-messages');
 const suggestionButtons = document.querySelectorAll('.suggestion-button');
 
 let isSubmitting = false;
+let conversationHistory = [];
+const CLEAN_ERROR_MESSAGE = "Sorry, I couldn't generate an answer right now. Please try again.";
 
 function setLoadingState(isLoading) {
   isSubmitting = isLoading;
@@ -73,6 +75,7 @@ function addAssistantMessage(text, options = {}) {
   // Answer Text
   const paragraph = document.createElement('p');
   paragraph.textContent = text;
+  paragraph.style.whiteSpace = 'pre-line';
   bubble.appendChild(paragraph);
 
   // Sources Section (Document Title + Clickable URLs)
@@ -201,12 +204,23 @@ function validateUrl(value) {
   return null;
 }
 
-function renderReply(payload, requestedStrategy) {
+function renderReply(payload, requestedStrategy, userQuestion) {
   const answer = payload && typeof payload.answer === 'string' ? payload.answer : 'No answer was returned.';
   const sources = Array.isArray(payload && payload.sources) ? payload.sources : [];
   const evidence = Array.isArray(payload && payload.evidence) ? payload.evidence : [];
   const abstained = Boolean(payload && payload.abstention_status);
   const strategy = (payload && payload.strategy) || requestedStrategy || 'tfidf';
+
+  if (payload && payload.error) {
+    renderError(CLEAN_ERROR_MESSAGE);
+    return;
+  }
+
+  if (userQuestion) {
+    conversationHistory.push({ role: 'user', content: userQuestion });
+    conversationHistory.push({ role: 'assistant', content: answer });
+    conversationHistory = conversationHistory.slice(-10);
+  }
 
   if (abstained) {
     addAssistantMessage(answer, {
@@ -259,25 +273,19 @@ async function askQuestion(question) {
         question: trimmedQuestion,
         strategy: strategy,
         rerank: rerank,
+        conversation_history: conversationHistory.slice(-6),
       }),
     });
 
     if (!response.ok) {
-      let errorDetail = `HTTP ${response.status}`;
-      try {
-        const errorPayload = await response.json();
-        if (errorPayload && errorPayload.detail) {
-          errorDetail = errorPayload.detail;
-        }
-      } catch (_) {}
-      renderError(`Server error (${errorDetail}): Unable to answer question.`);
+      renderError(CLEAN_ERROR_MESSAGE);
       return;
     }
 
     const payload = await response.json();
-    renderReply(payload, strategy);
+    renderReply(payload, strategy, trimmedQuestion);
   } catch (error) {
-    renderError('Unable to reach the campus assistant service. Please verify that the API server is running at http://127.0.0.1:8000.');
+    renderError(CLEAN_ERROR_MESSAGE);
   } finally {
     setLoadingState(false);
     input.value = '';
@@ -291,6 +299,7 @@ form.addEventListener('submit', (event) => {
 });
 
 clearButton.addEventListener('click', () => {
+  conversationHistory = [];
   chatMessages.innerHTML = `
     <div class="message assistant">
       <div class="message-bubble">
