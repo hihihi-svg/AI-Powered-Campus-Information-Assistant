@@ -10,11 +10,37 @@ Strategy:
   6. Original URL, title, document_id, and all metadata are NEVER modified here.
 """
 
+import hashlib
+import json
 import logging
+import os
 import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("campus_pipeline.ocr")
+
+_OCR_CACHE_FILE = Path("data/cache/ocr_cache.json")
+_OCR_CACHE: Dict[str, Dict[str, Any]] = {}
+
+def _init_ocr_cache() -> None:
+    global _OCR_CACHE
+    if _OCR_CACHE_FILE.exists():
+        try:
+            with open(_OCR_CACHE_FILE, "r", encoding="utf-8") as f:
+                _OCR_CACHE = json.load(f)
+        except Exception as e:
+            logger.warning("Could not load OCR cache file: %s", e)
+
+_init_ocr_cache()
+
+def _save_ocr_cache() -> None:
+    try:
+        _OCR_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(_OCR_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(_OCR_CACHE, f, ensure_ascii=False)
+    except Exception as e:
+        logger.warning("Could not save OCR cache file: %s", e)
 
 # ──────────────────────────────────────────────
 # Dependency availability flags
@@ -199,6 +225,12 @@ def ocr_pdf_bytes(
             "error": "PDF payload too small or empty",
         }
 
+    cache_key = hashlib.sha256(raw_bytes).hexdigest()
+    if cache_key in _OCR_CACHE:
+        cached = dict(_OCR_CACHE[cache_key])
+        logger.info(f"OCR cache hit for PDF ({len(raw_bytes)} bytes, hash {cache_key[:8]})")
+        return cached
+
     engine = _get_rapidocr()
     if engine is None:
         return {
@@ -256,13 +288,16 @@ def ocr_pdf_bytes(
         f"OCR success: {url!r} — {len(page_images)} pages, "
         f"{pages_with_text} with text, {len(combined)} chars total"
     )
-    return {
+    result = {
         "ocr_status": OCR_SUCCESS,
         "ocr_text": combined,
         "page_count": len(page_images),
         "pages_with_text": pages_with_text,
         "error": None,
     }
+    _OCR_CACHE[cache_key] = result
+    _save_ocr_cache()
+    return result
 
 
 def is_rapidocr_available() -> bool:

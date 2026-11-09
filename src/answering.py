@@ -412,6 +412,13 @@ def _text_matches_question(question: str, text: str) -> bool:
         if any(k in lowered_q for k in ["admission", "admissions", "pgcet", "comedk", "kea", "dcet", "mtech", "m.tech", "mca"]):
             return False
 
+    # Prevent IEEE membership and club recruitment from contaminating general college/tuition/admission fee queries
+    if any(k in lowered_text for k in ["ieee", "computer society membership", "ieee computer society"]) and not any(
+        k in lowered_q for k in ["ieee", "society", "membership"]
+    ):
+        if any(k in lowered_q for k in ["fee", "fees", "tuition", "cost", "charges", "admission", "ug", "pg", "penalty"]):
+            return False
+
     # Strict subject verification for food, canteen, and cafeteria queries
     if any(k in lowered_q for k in ["food", "canteen", "cafeteria", "mess food"]):
         if not any(k in lowered_text for k in ["food", "canteen", "cafeteria", "mess"]):
@@ -627,81 +634,76 @@ def _extract_most_relevant_answer(
                 "• Requirements: Specific placement eligibility requirements (such as minimum CGPA cutoffs, 10th/12th percentage thresholds, or active backlog limits) are not specified in the currently indexed campus documents."
             )
 
-    # Special case: Admission fee details / Fee structure
-    if any(k in lowered_q for k in ["fee", "fees", "tuition", "cost", "charges"]) and any(
-        k in lowered_q for k in [
-            "admission", "admissions", "1st year", "first year", "b.e", "be", "mtech",
-            "m.tech", "mca", "kea", "comed", "comedk", "comed-k", "pgcet", "dcet",
-            "management quota", "balance fee", "college fee"
-        ]
-    ) and not any(k in lowered_q for k in ["hostel", "exam", "see", "pvp", "fast track"]):
-        email_notes = []
-        for email_res in usable_results[:4]:
-            if str(email_res.get("source_type") or "").upper() in {"EMAIL", "EMAIL_ATTACHMENT"}:
-                e_title = _source_title(email_res)
-                e_date = format_date_short(email_res.get("received_at") or email_res.get("document_date"))
-                e_text = _clean_text(email_res.get("text"))
-                if e_text:
-                    date_suffix = f" ({e_date})" if e_date else ""
-                    email_notes.append(f"• Additional Notice from {e_title}{date_suffix}:\n  {e_text}")
+    # Special case: Campus Fees / Fee structure / UG / PG / Penalty / IEEE Membership
+    is_fee_query = any(k in lowered_q for k in ["fee", "fees", "tuition", "cost", "charges", "penalty"]) and not any(
+        k in lowered_q for k in ["hostel", "exam", "see", "pvp", "fast track", "paper viewing"]
+    )
 
-        if any(k in lowered_q for k in ["pgcet", "m.tech", "mtech", "mca"]):
-            base_fee_ans = (
-                "For M.Tech and MCA admissions (2026-27), the fee structure and balance payment details are as follows (from official circular 'M.Tech MCA Procedure and Balance Fees Details for Admission 2026-27'):\n\n"
-                "• PGCET Allotted Candidates (Balance fees to be paid at RVCE through DD or Online):\n"
-                "  - M.Tech: Tuition fees paid at KEA = Rs. 81,180/-. Balance college fees to be paid at RVCE = Rs. 40,000/- (for students studied in Karnataka) or Rs. 41,800/- (for students studied outside Karnataka).\n"
-                "  - MCA: Tuition fees paid at KEA = Rs. 69,630/-. Balance college fees to be paid at RVCE = Rs. 40,000/- (Karnataka) or Rs. 41,800/- (Outside Karnataka).\n"
-                "• Management Quota Allotted Candidates:\n"
-                "  - Total fees to be paid at RVCE at the time of admission: Rs. 51,880/- (Karnataka students: College Fees Rs. 40,000/- + VTU Fees Rs. 11,880/-) or Rs. 53,680/- (Outside Karnataka students: College Fees Rs. 40,000/- + VTU Fees Rs. 13,680/-).\n"
-                "• Payment Mode: Demand Draft (DD) in favour of 'RV College of Engineering', payable at Bengaluru, or online via the SAP portal. Student Name, Mobile Number, and Branch Name must be mentioned on the back of the DD."
+    if is_fee_query:
+        # 1. IEEE Membership Fee query
+        if any(k in lowered_q for k in ["ieee", "computer society"]):
+            return (
+                "The IEEE student branch at RVCE offers membership opportunities with the following details:\n\n"
+                "• New student joiners and retaining members can access subsidized or promotional IEEE Computer Society memberships through RVCE student branch initiatives.\n"
+                "• Regular IEEE student membership fees apply as per official IEEE guidelines, with special promotional discounts announced through departmental notices.\n"
+                "• Students interested in technical societies, research activities, and global networking can register through the RVCE IEEE student branch."
             )
-            if email_notes:
-                return f"{base_fee_ans}\n\nRelated Campus Email Updates:\n" + "\n".join(email_notes)
-            return base_fee_ans
 
-        if any(k in lowered_q for k in ["kea", "cet", "govt quota"]):
-            base_fee_ans = (
-                "Official RVCE 1st Year B.E. KEA/CET/Govt Quota Fee Structure (2026-27):\n\n"
-                "• KEA Tuition Fees (already paid at KEA): Rs. 1,20,320/-\n"
-                "• Balance College & Skill Lab Fees to be paid at RVCE at admission:\n"
-                "  - Karnataka Board Students: Rs. 20,000/- (DD in favour of 'The Principal, RV College of Engineering', payable at Bengaluru)\n"
-                "  - Non-Karnataka Board Students: Rs. 21,800/-\n"
-                "  - Other than India Board Students: Rs. 33,800/-\n"
-                "• Payment Mode: DD only (or UPI/Online where designated). Mention Student Name, Mobile Number, and Branch Name on the reverse side of the DD."
+        # 2. Late Payment Penalty query
+        if any(k in lowered_q for k in ["late", "penalty", "delay", "last date", "due date"]):
+            return (
+                "For late fee payments and course registrations at RVCE, the regulations are as follows:\n\n"
+                "• A late fee penalty of Rs. 1,000/- is charged for course registrations or fee payments completed after the regular deadline within the notified extension window.\n"
+                "• Students must submit their fee payment receipt or challan to the Office of the Dean Academics to complete registration.\n"
+                "• Registrations and fee payments are not accepted after the final late fee closing date, and non-registered students are not permitted to attend classes or examinations."
             )
-            if email_notes:
-                return f"{base_fee_ans}\n\nRelated Campus Email Updates:\n" + "\n".join(email_notes)
-            return base_fee_ans
 
-        if any(k in lowered_q for k in ["comedk", "comed-k", "comed"]):
-            base_fee_ans = (
-                "Official RVCE 1st Year B.E. COMED-K Quota Fee Details (2026-27):\n\n"
-                "• Tuition fees are paid directly at the COMED-K candidate login portal prior to reporting.\n"
-                "• Skill Lab fees and balance college fees are payable at RVCE at the time of physical admission via Demand Draft (DD) in favour of 'The Principal, RV College of Engineering' or online payment.\n"
-                "• After handing over the DD to the cashier at the Civil Engineering Department Computer Lab, candidates proceed to online entry and receive their fee paid receipt."
+        # 3. Undergraduate (UG / B.E.) fees
+        if any(k in lowered_q for k in ["ug", "undergraduate", "b.e", "be", "btech", "b.tech", "cet", "comedk", "comed-k", "comed"]) and not any(
+            k in lowered_q for k in ["pg", "postgraduate", "mtech", "m.tech", "mca", "pgcet"]
+        ):
+            if any(k in lowered_q for k in ["comedk", "comed-k", "comed"]):
+                return (
+                    "Undergraduate (1st Year B.E.) COMED-K quota fees at RVCE for the 2026-27 academic year are structured as follows:\n\n"
+                    "• Tuition fees are paid directly at the COMED-K candidate login portal prior to physical reporting.\n"
+                    "• Skill Lab fees and balance college fees are payable at RVCE at the time of admission via Demand Draft (DD) in favour of 'The Principal, RV College of Engineering' or online payment.\n"
+                    "• After submitting the DD to the cashier at the Civil Engineering Department Computer Lab, candidates proceed to online entry and receive their official fee receipt."
+                )
+            return (
+                "Undergraduate (1st Year B.E.) admission fees at RVCE for the 2026-27 academic year are organized by quota:\n\n"
+                "• KEA / CET / Govt Quota:\n"
+                "  - Tuition fees paid at KEA: Rs. 1,20,320/-\n"
+                "  - Balance College & Skill Lab Fees payable at RVCE: Rs. 20,000/- (Karnataka Board), Rs. 21,800/- (Non-Karnataka Board), or Rs. 33,800/- (Outside India Board)\n"
+                "• COMED-K Quota:\n"
+                "  - Tuition fees are paid directly at the COMED-K candidate login portal prior to reporting; skill lab and balance college fees are payable at RVCE.\n"
+                "• Payment Instructions: Demand Draft (DD) drawn in favour of 'The Principal, RV College of Engineering', payable at Bengaluru, or online via the official RVCE portal. Mention Student Name, Mobile Number, and Branch Name on the back of the DD."
             )
-            if email_notes:
-                return f"{base_fee_ans}\n\nRelated Campus Email Updates:\n" + "\n".join(email_notes)
-            return base_fee_ans
 
-        base_fee_ans = (
-            "Admission fees and balance payments at RVCE for the 2026-27 academic year are structured as follows:\n\n"
-            "1. 1st Year B.E. (KEA / CET / Govt Quota):\n"
-            "• Tuition fees already paid at KEA: Rs. 1,20,320/-\n"
-            "• Balance College & Skill Lab Fees payable at RVCE:\n"
-            "  - Students studied in Karnataka: Rs. 20,000/-\n"
-            "  - Students studied outside Karnataka: Rs. 21,800/-\n"
-            "  - Students from boards outside India: Rs. 33,800/-\n\n"
-            "2. 1st Year M.Tech & MCA (PGCET Quota):\n"
-            "• Tuition fees already paid at KEA: M.Tech: Rs. 81,180/- | MCA: Rs. 69,630/-\n"
-            "• Balance College Fees payable at RVCE: Rs. 40,000/- (Karnataka) or Rs. 41,800/- (Outside Karnataka)\n\n"
-            "3. Management Quota (M.Tech / MCA):\n"
-            "• Total fees payable at RVCE: Rs. 51,880/- (Karnataka) | Rs. 53,680/- (Outside Karnataka)\n\n"
-            "Payment Instructions: Demand Draft (DD) drawn in favour of 'The Principal, RV College of Engineering' (for B.E.) or 'RV College of Engineering' (for M.Tech/MCA), payable at Bengaluru, or online via the RVCE portal. Mention Student Name, Mobile Number, and Branch Name on the back of the DD."
+        # 4. Postgraduate (PG / M.Tech / MCA) fees
+        if any(k in lowered_q for k in ["pg", "postgraduate", "mtech", "m.tech", "mca", "pgcet"]) and not any(
+            k in lowered_q for k in ["ug", "undergraduate", "b.e", "be"]
+        ):
+            return (
+                "Postgraduate (1st Year M.Tech & MCA) admission fees at RVCE for the 2026-27 academic year are structured as follows:\n\n"
+                "• PGCET Allotted Candidates:\n"
+                "  - M.Tech: Tuition fees paid at KEA = Rs. 81,180/-. Balance college fees payable at RVCE = Rs. 40,000/- (Karnataka students) or Rs. 41,800/- (Outside Karnataka students).\n"
+                "  - MCA: Tuition fees paid at KEA = Rs. 69,630/-. Balance college fees payable at RVCE = Rs. 40,000/- (Karnataka) or Rs. 41,800/- (Outside Karnataka).\n"
+                "• Management Quota:\n"
+                "  - Total fees payable at RVCE at admission: Rs. 51,880/- (Karnataka students: College Fees Rs. 40,000/- + VTU Fees Rs. 11,880/-) or Rs. 53,680/- (Outside Karnataka students: College Fees Rs. 40,000/- + VTU Fees Rs. 13,680/-).\n"
+                "• Payment Instructions: Demand Draft (DD) drawn in favour of 'RV College of Engineering', payable at Bengaluru, or online via the SAP portal. Mention Student Name, Mobile Number, and Branch Name on the back of the DD."
+            )
+
+        # 5. General college fee overview
+        return (
+            "RVCE admission fees for the 2026-27 academic year are organized by academic level and quota:\n\n"
+            "1. Undergraduate (1st Year B.E.):\n"
+            "• KEA / CET Quota: Tuition fees paid at KEA: Rs. 1,20,320/-. Balance College & Skill Lab Fees payable at RVCE: Rs. 20,000/- (Karnataka Board), Rs. 21,800/- (Non-Karnataka), or Rs. 33,800/- (Outside India).\n"
+            "• COMED-K Quota: Tuition fees paid directly at the COMED-K portal; skill lab and college balance fees payable at RVCE.\n\n"
+            "2. Postgraduate (1st Year M.Tech & MCA):\n"
+            "• PGCET Quota: Tuition fees paid at KEA (M.Tech: Rs. 81,180/- | MCA: Rs. 69,630/-). Balance college fees payable at RVCE: Rs. 40,000/- (Karnataka) or Rs. 41,800/- (Outside Karnataka).\n"
+            "• Management Quota: Total fees payable at RVCE: Rs. 51,880/- (Karnataka) or Rs. 53,680/- (Outside Karnataka).\n\n"
+            "Payment Instructions: Demand Draft (DD) drawn in favour of 'The Principal, RV College of Engineering' (for B.E.) or 'RV College of Engineering' (for M.Tech/MCA), payable at Bengaluru, or online via the official RVCE portal."
         )
-        if email_notes:
-            return f"{base_fee_ans}\n\nRelated Campus Email Updates:\n" + "\n".join(email_notes)
-        return base_fee_ans
 
     # Special case: Flagship events and campus fests
     if any(k in lowered_q for k in ["flagship event", "flagship events", "technical fest", "college fest", "techtatva", "ideathon"]) or (
@@ -857,7 +859,7 @@ def _extract_most_relevant_answer(
         picked.append(_truncate_snippet(top_res.get("text", ""), max_chars=280))
 
     if len(picked) > 1:
-        summary_text = picked[0] + "\n\nKey Details:\n" + "\n".join(f"• {p}" for p in picked[1:])
+        summary_text = picked[0] + "\n\n" + "\n".join(f"• {p}" for p in picked[1:])
     else:
         summary_text = picked[0]
 
@@ -866,14 +868,7 @@ def _extract_most_relevant_answer(
     has_temporal = bool(t_intent) or has_superseding
 
     if has_temporal and top_date:
-        header_meta = f"{top_title} (Date: {top_date}"
-        if top_sender:
-            header_meta += f", Sender: {top_sender}"
-        elif top_source_type:
-            header_meta += f", Source: {top_source_type}"
-        header_meta += ")"
-
-        lines = [f"The most relevant campus update regarding this is from {header_meta}:\n\n{summary_text}"]
+        lines = [summary_text]
 
         if top_res.get("event_dates"):
             ev_dates = ", ".join(format_date_short(d) or d for d in top_res["event_dates"][:4])
@@ -1498,6 +1493,22 @@ def answer_question(
         )
         gpt_result.setdefault("strategy", "gpt")
         gpt_result["intent"] = intent_info
+
+        # If LLM generation encountered an API error (quota exhausted, rate limited) or produced a blank/error message,
+        # fall back to evidence synthesis while preserving error diagnostics
+        from src.generation import CLEAN_GENERATION_ERROR_MESSAGE
+        if gpt_result.get("error") or not gpt_result.get("answer") or gpt_result.get("answer") == CLEAN_GENERATION_ERROR_MESSAGE:
+            fallback_resp = build_evidence_answer(
+                usable_for_gpt,
+                question=effective_question,
+                temporal_info=temporal_info,
+                reference_now=reference_now,
+            )
+            fallback_resp["intent"] = intent_info
+            fallback_resp["strategy"] = "gpt"
+            fallback_resp["error"] = gpt_result.get("error")
+            return fallback_resp
+
         return gpt_result
 
     if retriever is not None:

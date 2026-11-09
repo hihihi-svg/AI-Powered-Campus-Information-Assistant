@@ -518,12 +518,14 @@ class CampusGmailMCPServer:
             att_bytes_map: Dict[str, bytes] = {}
             payload = msg.get("payload", {})
             attachments_meta = _find_attachments(payload)
-            if include_attachments:
+            if include_attachments and len(att_bytes_map) < 1:
                 for att in attachments_meta:
-                    if str(att.get("filename") or "").lower().endswith(".pdf"):
+                    att_name = str(att.get("filename") or "").lower()
+                    if att_name.endswith(".pdf") and len(att_bytes_map) < 1:
                         raw_b = fetch_attachment_bytes(svc, msg_id, att["attachmentId"])
                         if raw_b:
                             att_bytes_map[att["attachmentId"]] = raw_b
+                            break
 
             parent_rec, child_recs = parse_email_message(msg, att_bytes_map)
             records_to_chunk: List[Dict[str, Any]] = []
