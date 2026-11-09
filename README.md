@@ -384,4 +384,78 @@ python -m mlflow ui --port 5000
 ```
 Then navigate to [http://127.0.0.1:5000](http://127.0.0.1:5000) to inspect tracked runs, metrics, parameters, and logged model artifacts across `rvce-campus-retrieval-benchmark` and `rvce-campus-intent-classification`.
 
+---
+
+## 11. Docker & Docker Compose Deployment
+
+The entire application (FastAPI backend, conversational RAG, hybrid/semantic retrieval, intent classification, Gmail search, and Web UI) is fully containerized.
+
+### 11.1 Build and Run with Docker Compose (Recommended)
+
+1. **Start the Container**:
+   ```bash
+   docker compose up -d
+   ```
+   *The container exposes port `8000` by default and mounts `./data/processed` and `./reports` for persistent data storage across restarts.*
+
+2. **Check Container Status & Logs**:
+   ```bash
+   docker compose ps
+   docker compose logs -f
+   ```
+
+3. **Stop the Container**:
+   ```bash
+   docker compose down
+   ```
+
+### 11.2 Build and Run with Standalone Docker
+
+1. **Build the Docker Image**:
+   ```bash
+   docker build -t campus-assistant:latest .
+   ```
+
+2. **Run the Container**:
+   ```bash
+   docker run -d --name campus-information-assistant -p 8000:8000 \
+     -v "$(pwd)/data/processed:/app/data/processed" \
+     -v "$(pwd)/reports:/app/reports" \
+     --restart unless-stopped \
+     campus-assistant:latest
+   ```
+
+### 11.3 Verification Commands
+
+- **Health Check**:
+  ```bash
+  curl http://localhost:8000/health
+  ```
+  Expected response: `{"status":"ok","service":"rvce-campus-information-assistant"}`
+
+- **Web Frontend**:
+  Open [http://localhost:8000](http://localhost:8000) in your web browser.
+
+- **RAG Admissions Query (Hybrid Retrieval)**:
+  ```bash
+  curl -X POST http://localhost:8000/ask \
+    -H "Content-Type: application/json" \
+    -d '{"question": "What documents are required for PGCET admissions?", "strategy": "hybrid"}'
+  ```
+
+- **Semantic Retrieval Query**:
+  ```bash
+  curl -X POST http://localhost:8000/ask \
+    -H "Content-Type: application/json" \
+    -d '{"question": "What are the fee details for admission?", "strategy": "semantic"}'
+  ```
+
+- **Date-Aware Internship Notice Query**:
+  ```bash
+  curl -X POST http://localhost:8000/ask \
+    -H "Content-Type: application/json" \
+    -d '{"question": "What is the latest internship notice?", "strategy": "hybrid"}'
+  ```
+
+
 

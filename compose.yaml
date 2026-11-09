@@ -1,0 +1,33 @@
+services:
+  campus-assistant:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: campus-assistant:latest
+    container_name: campus-information-assistant
+    ports:
+      - "${PORT:-8000}:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PYTHONUNBUFFERED=1
+      - GMAIL_AUTO_SYNC=${GMAIL_AUTO_SYNC:-0}
+      - GMAIL_SYNC_INTERVAL_SECONDS=${GMAIL_SYNC_INTERVAL_SECONDS:-300}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
+    volumes:
+      # Persistent corpus, precomputed embeddings, and index data
+      - ./data/processed:/app/data/processed
+      # Persistent evaluation and MLOps reports
+      - ./reports:/app/reports
+      # Read-only mount for local Gmail credentials/tokens (if present)
+      - ./secrets:/app/secrets:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
