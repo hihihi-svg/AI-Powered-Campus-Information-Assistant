@@ -1,3 +1,13 @@
+---
+title: AI Powered Campus Information Assistant
+emoji: 🎓
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Campus AI Assistant — Knowledge Acquisition & ML Pipeline
 ### MLOps Engineering & Retrieval-Augmented Generation (RAG) Data Engine
 
