@@ -242,4 +242,38 @@ def test_ask_gpt_surfaces_rate_limit_error_to_client():
     assert "429" not in payload["answer"]
 
 
+def test_ask_works_when_working_directory_is_external(tmp_path):
+    """Regression test: verify /ask succeeds even when working directory is outside repository (e.g. Render)."""
+    import os
+
+    old_cwd = os.getcwd()
+    try:
+        os.chdir(tmp_path)
+        response = client.post("/ask", json={"question": "What is the procedure for COMEDK rank card?"})
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["answer"]
+        assert "COMEDK" in payload["answer"] or "COMED-K" in payload["answer"]
+        assert payload["abstention_status"] is False
+        assert payload["error"] is None
+    finally:
+        os.chdir(old_cwd)
+
+
+def test_ask_logs_exception_traceback_on_unhandled_error(caplog):
+    """Verify that unhandled exceptions log the complete traceback via logger.exception."""
+    import logging
+    from unittest.mock import patch
+
+    with patch("src.api.answer_question", side_effect=FileNotFoundError("Simulated missing file")):
+        with caplog.at_level(logging.ERROR):
+            response = client.post("/ask", json={"question": "What is the fee?"})
+
+    assert response.status_code == 200
+    assert any("Unhandled error in ask_question" in record.message for record in caplog.records)
+    # logger.exception formats exc_info so traceback / exception details are captured
+    assert any(record.exc_info is not None for record in caplog.records)
+
+
+
 

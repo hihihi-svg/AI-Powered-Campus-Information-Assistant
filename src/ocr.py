@@ -20,7 +20,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("campus_pipeline.ocr")
 
-_OCR_CACHE_FILE = Path("data/cache/ocr_cache.json")
+REPO_ROOT = Path(__file__).resolve().parent.parent
+_OCR_CACHE_FILE = REPO_ROOT / "data" / "cache" / "ocr_cache.json"
 _OCR_CACHE: Dict[str, Dict[str, Any]] = {}
 
 def _init_ocr_cache() -> None:

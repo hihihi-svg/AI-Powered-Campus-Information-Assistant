@@ -18,6 +18,7 @@ import os
 import re
 import time
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -26,9 +27,28 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 logger = logging.getLogger("campus_pipeline.retrieval")
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_DATASET_PATH = os.environ.get("CAMPUS_DATASET_PATH") or str(REPO_ROOT / "data" / "processed" / "campus_documents.jsonl")
+DEFAULT_EMBEDDINGS_CACHE_PATH = os.environ.get("CAMPUS_EMBEDDINGS_PATH") or str(REPO_ROOT / "data" / "processed" / "corpus_semantic_embeddings.npy")
+
+
+def _resolve_path(path: str | Path) -> str:
+    """Resolve a path reliably against current working directory, then REPO_ROOT fallback."""
+    if not path:
+        return ""
+    p = Path(path)
+    if p.is_absolute() and p.exists():
+        return str(p)
+    if p.exists():
+        return str(p.resolve())
+    candidate = REPO_ROOT / p
+    if candidate.exists():
+        return str(candidate.resolve())
+    return str(candidate if not p.is_absolute() else p)
+
+
 DEFAULT_SEMANTIC_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L6-v2"
-DEFAULT_EMBEDDINGS_CACHE_PATH = "data/processed/corpus_semantic_embeddings.npy"
 _SEMANTIC_MODEL_CACHE: Dict[str, Any] = {}
 _CROSS_ENCODER_CACHE: Dict[str, Any] = {}
 
@@ -647,12 +667,13 @@ class TFIDFRetriever:
         logger.info(f"Indexed {len(self.chunks)} chunks from {len(records)} records.")
         return len(self.chunks)
 
-    def load_and_index(self, dataset_path: str = "data/processed/campus_documents.jsonl") -> int:
+    def load_and_index(self, dataset_path: str = DEFAULT_DATASET_PATH) -> int:
         """Load JSONL dataset and build retrieval index."""
-        if not os.path.exists(dataset_path):
-            raise FileNotFoundError(f"Dataset path not found: {dataset_path}")
+        resolved_path = _resolve_path(dataset_path)
+        if not os.path.exists(resolved_path):
+            raise FileNotFoundError(f"Dataset path not found: {resolved_path}")
 
-        records = _load_dataset_records(dataset_path)
+        records = _load_dataset_records(resolved_path)
         return self.index_records(records)
 
     @staticmethod
@@ -794,9 +815,10 @@ class SemanticRetriever:
         self.is_indexed = bool(self.chunks)
         return len(self.chunks)
 
-    def load_and_index(self, dataset_path: str = "data/processed/campus_documents.jsonl") -> int:
+    def load_and_index(self, dataset_path: str = DEFAULT_DATASET_PATH) -> int:
         """Load JSONL dataset and index chunks for semantic retrieval."""
-        records = _load_dataset_records(dataset_path)
+        resolved_path = _resolve_path(dataset_path)
+        records = _load_dataset_records(resolved_path)
         return self.index_records(records)
 
     def encode_corpus(self, batch_size: int = 32, cache_path: Optional[str] = None) -> Optional[np.ndarray]:
@@ -806,7 +828,7 @@ class SemanticRetriever:
         if not self.chunks:
             return None
 
-        effective_cache_path = cache_path or DEFAULT_EMBEDDINGS_CACHE_PATH
+        effective_cache_path = _resolve_path(cache_path) if cache_path else _resolve_path(DEFAULT_EMBEDDINGS_CACHE_PATH)
         if os.path.isfile(effective_cache_path):
             try:
                 cached = np.load(effective_cache_path)
@@ -978,8 +1000,9 @@ class HybridRetriever:
         self.rrf_k = rrf_k
         self.is_indexed: bool = False
 
-    def load_and_index(self, dataset_path: str = "data/processed/campus_documents.jsonl") -> int:
-        records = _load_dataset_records(dataset_path)
+    def load_and_index(self, dataset_path: str = DEFAULT_DATASET_PATH) -> int:
+        resolved_path = _resolve_path(dataset_path)
+        records = _load_dataset_records(resolved_path)
         return self.index_records(records)
 
     def index_records(self, records: List[Dict[str, Any]]) -> int:
@@ -1111,33 +1134,35 @@ def reset_retriever_caches() -> None:
 
 
 def get_default_retriever(
-    dataset_path: str = "data/processed/campus_documents.jsonl",
+    dataset_path: str = DEFAULT_DATASET_PATH,
 ) -> TFIDFRetriever:
     """Factory function returning an initialized, indexed TF-IDF retriever."""
-    if dataset_path not in _DEFAULT_RETRIEVER_CACHE:
+    resolved_path = _resolve_path(dataset_path)
+    if resolved_path not in _DEFAULT_RETRIEVER_CACHE:
         retriever = TFIDFRetriever()
-        retriever.load_and_index(dataset_path)
-        _DEFAULT_RETRIEVER_CACHE[dataset_path] = retriever
-    return _DEFAULT_RETRIEVER_CACHE[dataset_path]
+        retriever.load_and_index(resolved_path)
+        _DEFAULT_RETRIEVER_CACHE[resolved_path] = retriever
+    return _DEFAULT_RETRIEVER_CACHE[resolved_path]
 
 
 def get_default_semantic_retriever(
-    dataset_path: str = "data/processed/campus_documents.jsonl",
+    dataset_path: str = DEFAULT_DATASET_PATH,
     model_name: str = DEFAULT_SEMANTIC_MODEL,
     device: str = "cpu",
 ) -> SemanticRetriever:
     """Factory function returning an initialized semantic retriever."""
-    cache_key = f"{dataset_path}:{model_name}:{device}"
+    resolved_path = _resolve_path(dataset_path)
+    cache_key = f"{resolved_path}:{model_name}:{device}"
     if cache_key not in _DEFAULT_SEMANTIC_RETRIEVER_CACHE:
         retriever = SemanticRetriever(model_name=model_name, device=device)
-        retriever.load_and_index(dataset_path)
+        retriever.load_and_index(resolved_path)
         retriever.encode_corpus()
         _DEFAULT_SEMANTIC_RETRIEVER_CACHE[cache_key] = retriever
     return _DEFAULT_SEMANTIC_RETRIEVER_CACHE[cache_key]
 
 
 def get_default_hybrid_retriever(
-    dataset_path: str = "data/processed/campus_documents.jsonl",
+    dataset_path: str = DEFAULT_DATASET_PATH,
     model_name: str = DEFAULT_SEMANTIC_MODEL,
     reranker_name: str = DEFAULT_CROSS_ENCODER_MODEL,
     device: str = "cpu",
@@ -1146,10 +1171,11 @@ def get_default_hybrid_retriever(
     tfidf_weight: float = 0.5,
 ) -> HybridRetriever:
     """Factory function returning an initialized hybrid retriever."""
-    cache_key = f"{dataset_path}:{model_name}:{reranker_name}:{device}:{fusion_method}:{semantic_weight}:{tfidf_weight}"
+    resolved_path = _resolve_path(dataset_path)
+    cache_key = f"{resolved_path}:{model_name}:{reranker_name}:{device}:{fusion_method}:{semantic_weight}:{tfidf_weight}"
     if cache_key not in _DEFAULT_HYBRID_RETRIEVER_CACHE:
-        tfidf_retriever = get_default_retriever(dataset_path)
-        semantic_retriever = get_default_semantic_retriever(dataset_path=dataset_path, model_name=model_name, device=device)
+        tfidf_retriever = get_default_retriever(resolved_path)
+        semantic_retriever = get_default_semantic_retriever(dataset_path=resolved_path, model_name=model_name, device=device)
         reranker = CrossEncoderReranker(model_name=reranker_name, device=device)
         hybrid = HybridRetriever(
             tfidf_retriever=tfidf_retriever,
@@ -1165,11 +1191,12 @@ def get_default_hybrid_retriever(
 
 
 
-def _load_dataset_records(dataset_path: str = "data/processed/campus_documents.jsonl") -> List[Dict[str, Any]]:
-    if not os.path.exists(dataset_path):
-        raise FileNotFoundError(f"Dataset path not found: {dataset_path}")
+def _load_dataset_records(dataset_path: str = DEFAULT_DATASET_PATH) -> List[Dict[str, Any]]:
+    resolved_path = _resolve_path(dataset_path)
+    if not os.path.exists(resolved_path):
+        raise FileNotFoundError(f"Dataset path not found: {resolved_path}")
     records: List[Dict[str, Any]] = []
-    with open(dataset_path, "r", encoding="utf-8") as f:
+    with open(resolved_path, "r", encoding="utf-8") as f:
         for line_num, line in enumerate(f, start=1):
             line = line.strip()
             if not line:
@@ -1177,7 +1204,7 @@ def _load_dataset_records(dataset_path: str = "data/processed/campus_documents.j
             try:
                 records.append(json.loads(line))
             except json.JSONDecodeError:
-                logger.warning("Skipping malformed JSONL line %d in %s", line_num, dataset_path)
+                logger.warning("Skipping malformed JSONL line %d in %s", line_num, resolved_path)
     return records
 
 
@@ -1256,7 +1283,7 @@ def query_campus_knowledge(
     query: str,
     top_k: int = 5,
     score_threshold: float = 0.05,
-    dataset_path: str = "data/processed/campus_documents.jsonl",
+    dataset_path: str = DEFAULT_DATASET_PATH,
     strategy: str = "tfidf",
     rerank: bool = False,
 ) -> List[Dict[str, Any]]:

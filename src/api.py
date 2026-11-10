@@ -124,7 +124,7 @@ def ask_question(payload: QuestionRequest) -> Dict[str, Any]:
             conversation_history=payload.conversation_history,
         )
     except Exception as exc:  # pylint: disable=broad-except
-        logger.error("Unhandled error in ask_question: %s", type(exc).__name__)
+        logger.exception("Unhandled error in ask_question")
         result = {
             "answer": CLEAN_GENERATION_ERROR_MESSAGE,
             "evidence": [],

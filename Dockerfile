@@ -45,6 +45,9 @@ RUN mkdir -p /app/data/cache && chown -R user:user /app /home/user
 # Switch to non-root user
 USER user
 
+ENV CAMPUS_DATASET_PATH=/app/data/processed/campus_documents.jsonl \
+    CAMPUS_EMBEDDINGS_PATH=/app/data/processed/corpus_semantic_embeddings.npy
+
 EXPOSE 7860
 
 HEALTHCHECK --interval=20s --timeout=5s --start-period=15s --retries=3 \

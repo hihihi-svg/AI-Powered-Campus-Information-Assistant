@@ -19,9 +19,26 @@ import logging
 import os
 import re
 import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("campus_pipeline.mcp")
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _resolve_repo_path(path: str) -> str:
+    if not path:
+        return ""
+    p = Path(path)
+    if p.is_absolute() and p.exists():
+        return str(p)
+    if p.exists():
+        return str(p.resolve())
+    candidate = REPO_ROOT / p
+    if candidate.exists():
+        return str(candidate.resolve())
+    return str(candidate if not p.is_absolute() else p)
 
 MCP_PROTOCOL_VERSION = "2024-11-05"
 MCP_SERVER_NAME = "rvce-campus-gmail-mcp"
@@ -150,13 +167,13 @@ class CampusGmailMCPServer:
         report_path: str = "reports/gmail_ingestion_report.json",
     ) -> None:
         self.service = service
-        self.credentials_path = credentials_path
-        self.token_path = token_path
-        self.processed_path = processed_path
-        self.raw_path = raw_path
-        self.state_path = state_path
-        self.manifest_path = manifest_path
-        self.report_path = report_path
+        self.credentials_path = _resolve_repo_path(credentials_path)
+        self.token_path = _resolve_repo_path(token_path)
+        self.processed_path = _resolve_repo_path(processed_path)
+        self.raw_path = _resolve_repo_path(raw_path)
+        self.state_path = _resolve_repo_path(state_path)
+        self.manifest_path = _resolve_repo_path(manifest_path)
+        self.report_path = _resolve_repo_path(report_path)
         self.initialized: bool = False
 
     def _get_service(self) -> Any:

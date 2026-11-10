@@ -7,8 +7,13 @@ contextualization, and answer synthesis (extractive synthesis as well as OpenAI 
 
 from __future__ import annotations
 
+import os
 import re
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_DATASET_PATH = os.environ.get("CAMPUS_DATASET_PATH") or str(REPO_ROOT / "data" / "processed" / "campus_documents.jsonl")
 
 from src.retrieval import TFIDFRetriever, _chunk_to_result_dict, get_default_retriever
 from src.temporal import (
@@ -1373,13 +1378,20 @@ def answer_question(
     rerank: bool = False,
     top_k: int = 3,
     score_threshold: float = 0.05,
-    dataset_path: str = "data/processed/campus_documents.jsonl",
+    dataset_path: str = DEFAULT_DATASET_PATH,
     conversation_history: Optional[List[Dict[str, str]]] = None,
     reference_now: Optional[Any] = None,
     mcp_client: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Answer a campus question using retrieved evidence, query-time Gmail MCP search, Logistic Regression intent classification, date-aware ranking, and conversational context."""
     from src.intent_classification import classify_query_intent
+
+    if not dataset_path:
+        dataset_path = DEFAULT_DATASET_PATH
+    else:
+        p = Path(dataset_path)
+        if not p.is_absolute() and not p.exists() and (REPO_ROOT / p).exists():
+            dataset_path = str((REPO_ROOT / p).resolve())
 
     if not isinstance(question, str) or not question.strip():
         return {
