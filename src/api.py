@@ -56,7 +56,8 @@ def _sanitize_public_error_payload(
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     auto_sync_env = os.environ.get("GMAIL_AUTO_SYNC", "").strip().lower()
-    is_pytest = bool(os.environ.get("PYTEST_CURRENT_TEST"))
+    pytest_env = os.environ.get("PYTEST_CURRENT_TEST", "").strip().lower()
+    is_pytest = pytest_env in {"1", "true", "yes"} or ("test" in pytest_env and pytest_env not in {"0", "false", "no", ""})
     should_start_worker = auto_sync_env in {"1", "true", "yes"} or (
         auto_sync_env not in {"0", "false", "no"}
         and DEFAULT_TOKEN_PATH.exists()

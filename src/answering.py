@@ -1482,8 +1482,10 @@ def answer_question(
     # 3. Query-time Gmail MCP search (runs when mcp_client is provided or in live non-pytest execution)
     import os
 
+    pytest_env = os.environ.get("PYTEST_CURRENT_TEST", "").strip().lower()
+    is_pytest_run = pytest_env in {"1", "true", "yes"} or ("test" in pytest_env and pytest_env not in {"0", "false", "no", ""})
     should_query_gmail_mcp = (mcp_client is not None) or (
-        retriever is None and not os.environ.get("PYTEST_CURRENT_TEST")
+        retriever is None and not is_pytest_run
     )
     gmail_mcp_results: List[Dict[str, Any]] = []
     if should_query_gmail_mcp:
