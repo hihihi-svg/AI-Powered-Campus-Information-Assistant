@@ -1,1 +1,2 @@
-/campus_documents.jsonl
+# Un-ignored for self-contained Docker cloud deployments (Render, Hugging Face)
+!/campus_documents.jsonl
