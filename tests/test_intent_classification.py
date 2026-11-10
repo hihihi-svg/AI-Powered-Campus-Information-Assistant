@@ -154,3 +154,45 @@ def test_model_artifact_logging_and_reload(tmp_path):
 
     assert run_info["model_uri"] is not None
     assert run_info["model_reload_verified"] is True
+
+
+def test_intent_normalization_and_entity_extraction():
+    """Verify that semantically equivalent queries normalize to common intents and extract correct entities."""
+    from src.intent_classification import classify_query_intent, extract_query_entities_and_intent
+
+    # 1. KCET / KEA / CET queries normalize to admission_fee and kea_cet quota
+    kcet_queries = [
+        "fees for KCET quota",
+        "what is fee for KCET",
+        "KCET fees",
+        "KKEA quota fees",
+        "fees through CET",
+    ]
+    for q in kcet_queries:
+        info = classify_query_intent(q)
+        assert info["intent"] == "admission_fee", f"Expected 'admission_fee' for '{q}', got {info['intent']}"
+        assert info["entities"]["admission_quota"] == "kea_cet"
+        assert info["entities"]["is_comparison"] is False
+
+    # 2. COMEDK queries normalize to admission_fee and comedk quota
+    comedk_info = classify_query_intent("COMEDK fees")
+    assert comedk_info["intent"] == "admission_fee"
+    assert comedk_info["entities"]["admission_quota"] == "comedk"
+    assert comedk_info["entities"]["is_comparison"] is False
+
+    # 3. Management quota queries normalize to admission_fee and management quota
+    mgmt_info = classify_query_intent("management quota fees")
+    assert mgmt_info["intent"] == "admission_fee"
+    assert mgmt_info["entities"]["admission_quota"] == "management"
+    assert mgmt_info["entities"]["is_comparison"] is False
+
+    # 4. Comparison queries detect multiple quotas and comparison flag
+    comp_info = classify_query_intent("compare KCET and COMEDK fees")
+    assert comp_info["intent"] == "admission_fee"
+    assert comp_info["entities"]["is_comparison"] is True
+    assert comp_info["entities"]["admission_quota"] == "multiple"
+
+    # 5. Hostel fee query normalizes to hostel_fee
+    hostel_info = classify_query_intent("what are the hostel fees?")
+    assert hostel_info["intent"] == "hostel_fee"
+    assert hostel_info["entities"]["main_entity"] == "hostel"

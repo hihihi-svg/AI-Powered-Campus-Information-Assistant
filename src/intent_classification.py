@@ -405,6 +405,10 @@ def train_and_evaluate_all(
 
 
 INTENT_DISPLAY_LABELS: Dict[str, str] = {
+    "admission_fee": "Admission Fees",
+    "hostel_fee": "Hostel Fees",
+    "fee_penalty": "Late Fee Penalty",
+    "general_fee": "Fee Structure",
     "admissions": "Admissions",
     "fees_finance": "Fees and Finance",
     "academics_exams": "Academics and Exams",
@@ -459,6 +463,199 @@ def get_intent_classifier(
         return None
 
 
+def extract_query_entities_and_intent(
+    question: str,
+    raw_intent: str = "unknown",
+    raw_confidence: float = 0.0,
+) -> Dict[str, Any]:
+    """Extract domain entities and normalize semantically equivalent queries to structured intents.
+
+    Identifies:
+      - normalized_intent ('admission_fee', 'hostel_fee', 'fee_penalty', 'general_fee', 'admissions', etc.)
+      - main_entity ('admission_fee', 'hostel', 'placement', 'examination', 'facility', 'faculty')
+      - admission_quota ('kea_cet', 'comedk', 'management', 'pgcet', 'dcet', 'multiple', or None)
+      - fee_category ('tuition', 'college', 'hostel', 'transportation', 'late_penalty', 'admission_fee', or None)
+      - academic_year ('2026-27', '1st year', 'higher semester', or None)
+      - board ('karnataka', 'non_karnataka', 'outside_india', or None)
+      - is_comparison (bool, True if comparing multiple quotas)
+      - retrieval_expansion (str of domain terms to enrich retrieval)
+    """
+    import re
+
+    raw_q = (question or "").strip()
+    lowered = raw_q.lower()
+
+    # Typo correction and synonym normalization for entity detection
+    typo_map = {
+        r"\bkket\b": "kcet",
+        r"\bkkea\b": "kea",
+        r"\bcomed-k\b": "comedk",
+        r"\bmgmt\b": "management",
+        r"\bhostle\b": "hostel",
+        r"\bhostal\b": "hostel",
+        r"\bintership\b": "internship",
+        r"\badmisson\b": "admission",
+        r"\badmision\b": "admission",
+    }
+    normalized_q = lowered
+    for pat, rep in typo_map.items():
+        normalized_q = re.sub(pat, rep, normalized_q)
+
+    # 1. Quota entity detection
+    has_kea_cet = bool(
+        re.search(r"\b(k-?cet|kcet|kea|kkea|govt(?:\s+quota)?|government(?:\s+quota)?)\b", normalized_q)
+        or re.search(r"\bfees?\s+(?:through|for|under|via)\s+cet\b", normalized_q)
+        or re.search(r"\b(?<!pg)(?<!d)cet\b", normalized_q)
+    )
+    has_comedk = bool(re.search(r"\b(comed-?k|comed)\b", normalized_q))
+    has_mgmt = bool(re.search(r"\b(management(?:\s+quota)?|mgmt(?:\s+quota)?)\b", normalized_q))
+    has_pgcet = bool(re.search(r"\b(pgcet|m\.?tech|mtech|mca)\b", normalized_q))
+    has_dcet = bool(re.search(r"\b(dcet|lateral\s+entry)\b", normalized_q))
+
+    # Quota comparison detection
+    quota_flags = [("kea_cet", has_kea_cet), ("comedk", has_comedk), ("management", has_mgmt), ("pgcet", has_pgcet)]
+    detected_quotas = [q for q, present in quota_flags if present]
+    is_comparison = bool(
+        re.search(r"\b(compare|comparison|difference\s+between|vs|versus)\b", normalized_q)
+        or len(detected_quotas) >= 2
+    )
+
+    admission_quota = None
+    if is_comparison or len(detected_quotas) >= 2:
+        admission_quota = "multiple"
+    elif has_kea_cet:
+        admission_quota = "kea_cet"
+    elif has_comedk:
+        admission_quota = "comedk"
+    elif has_mgmt:
+        admission_quota = "management"
+    elif has_pgcet:
+        admission_quota = "pgcet"
+    elif has_dcet:
+        admission_quota = "dcet"
+
+    # 2. Fee category detection
+    has_fee_word = bool(
+        re.search(
+            r"\b(fees?|tuition|cost|costs|charges?|pay|payment|amount|dues?|fine|penalty)\b",
+            normalized_q,
+        )
+    )
+    is_hostel = bool(re.search(r"\b(hostel|mess|food|boarding)\b", normalized_q))
+    is_penalty = bool(re.search(r"\b(late|fine|penalty|delay|due\s+date|last\s+date)\b", normalized_q))
+    is_tuition = bool(re.search(r"\b(tuition|college\s+fee|skill\s+lab)\b", normalized_q))
+
+    fee_category = None
+    if has_fee_word or raw_intent == "fees_finance":
+        if is_hostel:
+            fee_category = "hostel"
+        elif is_penalty:
+            fee_category = "late_penalty"
+        elif is_tuition:
+            fee_category = "tuition"
+        elif admission_quota:
+            fee_category = "admission_fee"
+        else:
+            fee_category = "general_fee"
+
+    # 3. Academic year & level
+    academic_year = None
+    year_match = re.search(r"\b(202[4-7](?:-2[5-8])?)\b", normalized_q)
+    if year_match:
+        academic_year = year_match.group(1)
+    elif re.search(r"\b(1st\s+year|first\s+year|freshers?)\b", normalized_q):
+        academic_year = "1st year"
+    elif re.search(r"\b(2nd\s+year|second\s+year|lateral\s+entry)\b", normalized_q):
+        academic_year = "2nd year"
+    elif re.search(r"\b(higher\s+semester)\b", normalized_q):
+        academic_year = "higher semester"
+
+    # 4. Board distinction
+    board = None
+    if re.search(r"\b(karnataka(?:\s+board)?)\b", normalized_q) and not re.search(r"\bnon-?karnataka\b", normalized_q):
+        board = "karnataka"
+    elif re.search(r"\b(non-?karnataka|cbse|icse|outside\s+state)\b", normalized_q):
+        board = "non_karnataka"
+    elif re.search(r"\b(outside\s+india|nri|foreign)\b", normalized_q):
+        board = "outside_india"
+
+    # 5. Normalized Intent resolution
+    normalized_intent = raw_intent
+    if has_fee_word or raw_intent == "fees_finance" or (raw_intent == "admissions" and (admission_quota or has_fee_word)):
+        if is_hostel:
+            normalized_intent = "hostel_fee"
+        elif is_penalty:
+            normalized_intent = "fee_penalty"
+        elif admission_quota or any(k in normalized_q for k in ["admission", "seat", "allotment", "cutoff", "quota", "comedk", "kcet", "kea", "cet"]):
+            normalized_intent = "admission_fee"
+        elif has_fee_word:
+            normalized_intent = "admission_fee"
+    elif is_hostel:
+        normalized_intent = "facilities_hostels"
+    elif any(k in normalized_q for k in ["placement", "package", "salary", "internship", "recruiter", "tier 1"]):
+        normalized_intent = "placements_careers"
+    elif any(k in normalized_q for k in ["exam", "see", "fast track", "revaluation", "grade card", "credits", "syllabus"]):
+        normalized_intent = "academics_exams"
+    elif any(k in normalized_q for k in ["department", "hod", "cabin", "faculty", "dean", "principal", "contact", "reception"]):
+        normalized_intent = "departments_faculty"
+    elif any(k in normalized_q for k in ["club", "fest", "activity", "nss", "ncc", "hackathon", "bonafide"]):
+        normalized_intent = "student_services_clubs"
+
+    # 6. Main Entity
+    if normalized_intent == "admission_fee":
+        main_entity = "admission_fee"
+    elif normalized_intent in {"hostel_fee", "facilities_hostels"}:
+        main_entity = "hostel"
+    elif normalized_intent == "fee_penalty":
+        main_entity = "fee_penalty"
+    elif normalized_intent == "placements_careers":
+        main_entity = "placement"
+    elif normalized_intent == "academics_exams":
+        main_entity = "examination"
+    elif normalized_intent == "departments_faculty":
+        main_entity = "faculty"
+    elif normalized_intent == "student_services_clubs":
+        main_entity = "student_services"
+    elif normalized_intent == "admissions":
+        main_entity = "admission"
+    else:
+        main_entity = "campus_info"
+
+    # 7. Retrieval Expansion string
+    expansion_terms = []
+    if admission_quota == "kea_cet":
+        expansion_terms.append("KEA CET KCET government quota admission process fees details 1st Year B.E. tuition college fees")
+    elif admission_quota == "comedk":
+        expansion_terms.append("COMEDK COMED-K quota admission process fees details 1st Year B.E. candidate portal")
+    elif admission_quota == "management":
+        expansion_terms.append("management quota admission process fees details M.Tech MCA B.E. college fees")
+    elif admission_quota == "pgcet":
+        expansion_terms.append("PGCET M.Tech MCA admission procedure mandatory documents KEA balance fees")
+    elif admission_quota == "multiple" or is_comparison:
+        expansion_terms.append("KEA CET KCET COMEDK quota admission fees structure comparison 1st Year B.E.")
+    elif is_hostel:
+        expansion_terms.append("hostel fees room rent mess transportation boys girls hostel contact")
+    elif is_penalty:
+        expansion_terms.append("late fee penalty payment deadline extension circular Dean Academics")
+
+    retrieval_expansion = " ".join(expansion_terms)
+
+    return {
+        "normalized_intent": normalized_intent,
+        "main_entity": main_entity,
+        "entities": {
+            "main_entity": main_entity,
+            "admission_quota": admission_quota,
+            "detected_quotas": detected_quotas,
+            "fee_category": fee_category,
+            "academic_year": academic_year,
+            "board": board,
+            "is_comparison": is_comparison,
+        },
+        "retrieval_expansion": retrieval_expansion,
+    }
+
+
 def classify_query_intent(
     question: str,
     confidence_threshold: float = 0.14,
@@ -467,75 +664,69 @@ def classify_query_intent(
     """Classify a user query using the trained TF-IDF + Logistic Regression pipeline with safe unknown fallback."""
     cleaned = (question or "").strip()
     if not cleaned:
+        extracted = extract_query_entities_and_intent("")
         return {
             "intent": "unknown",
+            "normalized_intent": "unknown",
+            "raw_intent": "unknown",
             "intent_label": "Unknown",
             "confidence": 0.0,
             "is_confident": False,
             "routing": "general_fallback",
             "model": "logistic_regression_tfidf",
+            "entities": extracted["entities"],
+            "retrieval_expansion": extracted["retrieval_expansion"],
         }
 
     pipeline = get_intent_classifier(dataset_path=dataset_path)
-    if pipeline is None:
-        return {
-            "intent": "unknown",
-            "intent_label": "Unknown",
-            "confidence": 0.0,
-            "is_confident": False,
-            "routing": "general_fallback",
-            "model": "unavailable",
-        }
+    pred_intent = "unknown"
+    confidence = 0.0
+    is_confident = False
 
-    try:
-        tfidf_step = pipeline.named_steps.get("tfidf")
-        if tfidf_step is not None:
-            vec = tfidf_step.transform([cleaned])
-            if vec.nnz == 0:
-                return {
-                    "intent": "unknown",
-                    "intent_label": "Unknown",
-                    "confidence": 0.0,
-                    "is_confident": False,
-                    "routing": "general_fallback",
-                    "model": "logistic_regression_tfidf",
-                }
+    if pipeline is not None:
+        try:
+            tfidf_step = pipeline.named_steps.get("tfidf")
+            vec_valid = True
+            if tfidf_step is not None:
+                vec = tfidf_step.transform([cleaned])
+                if vec.nnz == 0:
+                    vec_valid = False
 
-        probs = pipeline.predict_proba([cleaned])[0]
-        classes = list(pipeline.classes_)
-        best_idx = int(probs.argmax())
-        pred_intent = str(classes[best_idx])
-        confidence = round(float(probs[best_idx]), 4)
+            if vec_valid:
+                probs = pipeline.predict_proba([cleaned])[0]
+                classes = list(pipeline.classes_)
+                best_idx = int(probs.argmax())
+                pred_intent = str(classes[best_idx])
+                confidence = round(float(probs[best_idx]), 4)
+                if confidence >= confidence_threshold:
+                    is_confident = True
+        except Exception as exc:
+            logger.warning("Intent classification failed safely: %s", type(exc).__name__)
 
-        if confidence < confidence_threshold:
-            return {
-                "intent": "unknown",
-                "predicted_raw_intent": pred_intent,
-                "intent_label": "Unknown",
-                "confidence": confidence,
-                "is_confident": False,
-                "routing": "general_fallback",
-                "model": "logistic_regression_tfidf",
-            }
+    # Extract entities and normalize intent semantically
+    extracted = extract_query_entities_and_intent(
+        cleaned, raw_intent=pred_intent, raw_confidence=confidence
+    )
+    normalized_intent = extracted["normalized_intent"]
+    entities = extracted["entities"]
+    retrieval_expansion = extracted["retrieval_expansion"]
 
-        return {
-            "intent": pred_intent,
-            "intent_label": INTENT_DISPLAY_LABELS.get(pred_intent, pred_intent),
-            "confidence": confidence,
-            "is_confident": True,
-            "routing": "intent_guided",
-            "model": "logistic_regression_tfidf",
-        }
-    except Exception as exc:
-        logger.warning("Intent classification failed safely: %s", type(exc).__name__)
-        return {
-            "intent": "unknown",
-            "intent_label": "Unknown",
-            "confidence": 0.0,
-            "is_confident": False,
-            "routing": "general_fallback",
-            "model": "logistic_regression_tfidf",
-        }
+    # Mark as confident if entities (quota, hostel, penalty) provide strong semantic signals
+    has_strong_entity = bool(entities.get("admission_quota") or entities.get("fee_category") or entities.get("is_comparison"))
+    final_confident = is_confident or has_strong_entity
+
+    return {
+        "intent": normalized_intent,
+        "normalized_intent": normalized_intent,
+        "raw_intent": pred_intent,
+        "intent_label": INTENT_DISPLAY_LABELS.get(normalized_intent, INTENT_DISPLAY_LABELS.get(pred_intent, pred_intent)),
+        "confidence": confidence,
+        "is_confident": final_confident,
+        "routing": "intent_guided" if final_confident else "general_fallback",
+        "model": "logistic_regression_tfidf",
+        "entities": entities,
+        "retrieval_expansion": retrieval_expansion,
+    }
 
 
 def main() -> None:

@@ -167,6 +167,8 @@ GENERIC_QUERY_WORDS = {
     "admissions",
     "fee",
     "fees",
+    "quota",
+    "quotas",
     "application",
     "applications",
     "document",
@@ -276,6 +278,12 @@ def _normalize_tokens(value: str, exclude_temporal: bool = False) -> Set[str]:
     for tok in tokens:
         if tok in synonym_map:
             expanded.add(synonym_map[tok])
+    if any(t in tokens for t in ["kcet", "kea", "cet", "kkea"]):
+        expanded.update(["kcet", "kea", "cet", "govt"])
+    if any(t in tokens for t in ["comedk", "comed"]):
+        expanded.update(["comedk", "comed"])
+    if any(t in tokens for t in ["management", "mgmt"]):
+        expanded.add("management")
     return expanded
 
 
@@ -418,6 +426,23 @@ def _text_matches_question(question: str, text: str) -> bool:
     ):
         if any(k in lowered_q for k in ["fee", "fees", "tuition", "cost", "charges", "admission", "ug", "pg", "penalty"]):
             return False
+
+    # Prevent cross-quota contamination when a specific admission quota is queried (unless comparison is requested)
+    is_comparison = bool(re.search(r"\b(compare|comparison|difference\s+between|vs|versus)\b", lowered_q))
+    if not is_comparison:
+        # User specifically asked for KCET / KEA / CET quota
+        if any(k in lowered_q for k in ["kcet", "k-cet", "kea", "kkea"]) or re.search(r"\bfees?\s+(?:through|for|under|via)\s+cet\b", lowered_q):
+            # If document is strictly about COMED-K and doesn't mention KEA/CET, don't match
+            if ("comedk" in lowered_text or "comed-k" in lowered_text) and not any(k in lowered_text for k in ["kea", "cet", "govt quota", "government quota", "1,20,320"]):
+                return False
+        # User specifically asked for COMEDK quota
+        elif any(k in lowered_q for k in ["comedk", "comed-k", "comed"]) and not any(k in lowered_q for k in ["kcet", "kea", "cet"]):
+            if ("kea" in lowered_text or "cet" in lowered_text) and not any(k in lowered_text for k in ["comedk", "comed-k", "comed"]):
+                return False
+        # User specifically asked for Management quota
+        elif "management" in lowered_q and not any(k in lowered_q for k in ["comedk", "kcet", "kea", "pgcet"]):
+            if not any(k in lowered_text for k in ["management", "rsst", "trust"]):
+                return False
 
     # Strict subject verification for food, canteen, and cafeteria queries
     if any(k in lowered_q for k in ["food", "canteen", "cafeteria", "mess food"]):
@@ -634,6 +659,16 @@ def _extract_most_relevant_answer(
                 "• Requirements: Specific placement eligibility requirements (such as minimum CGPA cutoffs, 10th/12th percentage thresholds, or active backlog limits) are not specified in the currently indexed campus documents."
             )
 
+    # Special case: Hostel accommodation and fees
+    if "hostel" in lowered_q and any(k in lowered_q for k in ["fee", "fees", "cost", "charge", "charges", "mess", "boarding", "deposit", "rate", "rent"]):
+        return (
+            "RVCE provides on-campus hostel accommodation for boys and girls, with contact and fee details outlined below (from 2026-27 Campus Records):\n\n"
+            "• Boys Hostel Office: Contact 080-68188256 for room availability, allotment procedures, and current fee structures.\n"
+            "• Girls Hostel Office: Contact 080-68188165 / 080-68188166 for room allotment and fee schedules.\n"
+            "• Krishna Garden Girls Hostel Transportation Fee: Rs. 10,500/- (college bus transportation charges for girl students staying in Krishna Garden Hostel).\n"
+            "• Note: Detailed hostel room rent and mess fee schedules are managed directly by the hostel office and chief warden at the time of admission."
+        )
+
     # Special case: Campus Fees / Fee structure / UG / PG / Penalty / IEEE Membership
     is_fee_query = any(k in lowered_q for k in ["fee", "fees", "tuition", "cost", "charges", "penalty"]) and not any(
         k in lowered_q for k in ["hostel", "exam", "see", "pvp", "fast track", "paper viewing"]
@@ -658,28 +693,66 @@ def _extract_most_relevant_answer(
                 "• Registrations and fee payments are not accepted after the final late fee closing date, and non-registered students are not permitted to attend classes or examinations."
             )
 
-        # 3. Undergraduate (UG / B.E.) fees
-        if any(k in lowered_q for k in ["ug", "undergraduate", "b.e", "be", "btech", "b.tech", "cet", "comedk", "comed-k", "comed"]) and not any(
-            k in lowered_q for k in ["pg", "postgraduate", "mtech", "m.tech", "mca", "pgcet"]
-        ):
-            if any(k in lowered_q for k in ["comedk", "comed-k", "comed"]):
-                return (
-                    "Undergraduate (1st Year B.E.) COMED-K quota fees at RVCE for the 2026-27 academic year are structured as follows:\n\n"
-                    "• Tuition fees are paid directly at the COMED-K candidate login portal prior to physical reporting.\n"
-                    "• Skill Lab fees and balance college fees are payable at RVCE at the time of admission via Demand Draft (DD) in favour of 'The Principal, RV College of Engineering' or online payment.\n"
-                    "• After submitting the DD to the cashier at the Civil Engineering Department Computer Lab, candidates proceed to online entry and receive their official fee receipt."
-                )
+        # 3. Quota Comparison query (e.g. compare KCET and COMEDK fees)
+        is_comp = bool(
+            re.search(r"\b(compare|comparison|difference\s+between|vs|versus)\b", lowered_q)
+            or (any(k in lowered_q for k in ["kcet", "kea", "cet"]) and any(k in lowered_q for k in ["comedk", "comed-k", "comed"]))
+        )
+        if is_comp:
             return (
-                "Undergraduate (1st Year B.E.) admission fees at RVCE for the 2026-27 academic year are organized by quota:\n\n"
-                "• KEA / CET / Govt Quota:\n"
-                "  - Tuition fees paid at KEA: Rs. 1,20,320/-\n"
-                "  - Balance College & Skill Lab Fees payable at RVCE: Rs. 20,000/- (Karnataka Board), Rs. 21,800/- (Non-Karnataka Board), or Rs. 33,800/- (Outside India Board)\n"
-                "• COMED-K Quota:\n"
-                "  - Tuition fees are paid directly at the COMED-K candidate login portal prior to reporting; skill lab and balance college fees are payable at RVCE.\n"
+                "Comparison of Undergraduate (1st Year B.E.) Admission Fees between KCET/KEA Quota and COMED-K Quota at RVCE for the 2026-27 academic year:\n\n"
+                "1. KCET / KEA / Government Quota:\n"
+                "• Tuition Fees: Rs. 1,20,320/- paid directly at KEA (Karnataka Examination Authority) during seat allotment.\n"
+                "• Balance College & Skill Lab Fees payable at RVCE:\n"
+                "  - Karnataka State Board Students: Rs. 20,000/- (College Fee: Rs. 5,000/- + VTU / Skill Lab Fee: Rs. 15,000/-)\n"
+                "  - Non-Karnataka (CBSE / ICSE) Students: Rs. 21,800/- (College Fee: Rs. 5,000/- + VTU / Skill Lab Fee: Rs. 16,800/-)\n"
+                "  - Outside India Students: Rs. 33,800/-\n\n"
+                "2. COMED-K Quota:\n"
+                "• Tuition Fees: Paid directly at the COMED-K candidate login portal prior to physical reporting at RVCE.\n"
+                "• Balance College & Skill Lab Fees: Payable at RVCE at the time of admission reporting.\n\n"
+                "3. Payment Instructions:\n"
+                "• For both quotas, college-payable balance fees at RVCE are paid via Demand Draft (DD) drawn in favour of 'The Principal, RV College of Engineering', payable at Bengaluru, or online via the official RVCE portal."
+            )
+
+        # 4. Specific Undergraduate KCET / KEA / CET Quota (when NOT comparing)
+        if any(k in lowered_q for k in ["kcet", "k-cet", "kea", "kkea"]) or re.search(r"\bfees?\s+(?:through|for|under|via)\s+cet\b", lowered_q) or (
+            re.search(r"\b(?<!pg)(?<!d)cet\b", lowered_q) and not any(k in lowered_q for k in ["pg", "postgraduate", "mtech", "m.tech", "mca", "pgcet"])
+        ):
+            return (
+                "Undergraduate (1st Year B.E.) KCET / KEA / Government Quota admission fees at RVCE for the 2026-27 academic year are structured as follows:\n\n"
+                "• Tuition Fees:\n"
+                "  - Rs. 1,20,320/- paid directly at KEA (Karnataka Examination Authority) during seat allotment.\n\n"
+                "• Balance College & Skill Lab Fees (payable at RVCE at the time of admission):\n"
+                "  - Karnataka State Board Students: Rs. 20,000/- (College Fee: Rs. 5,000/- + VTU / Skill Lab Fee: Rs. 15,000/-)\n"
+                "  - Non-Karnataka (CBSE / ICSE) Students: Rs. 21,800/- (College Fee: Rs. 5,000/- + VTU / Skill Lab Fee: Rs. 16,800/-)\n"
+                "  - Outside India Students: Rs. 33,800/- (College Fee: Rs. 5,000/- + VTU / Skill Lab Fee: Rs. 28,800/-)\n\n"
                 "• Payment Instructions: Demand Draft (DD) drawn in favour of 'The Principal, RV College of Engineering', payable at Bengaluru, or online via the official RVCE portal. Mention Student Name, Mobile Number, and Branch Name on the back of the DD."
             )
 
-        # 4. Postgraduate (PG / M.Tech / MCA) fees
+        # 5. Specific Undergraduate COMED-K Quota
+        if any(k in lowered_q for k in ["comedk", "comed-k", "comed"]):
+            return (
+                "Undergraduate (1st Year B.E.) COMED-K quota fees at RVCE for the 2026-27 academic year are structured as follows:\n\n"
+                "• Tuition Fees:\n"
+                "  - Paid directly at the COMED-K candidate login portal prior to physical reporting at RVCE.\n\n"
+                "• College & Skill Lab Fees (payable at RVCE at the time of admission):\n"
+                "  - Balance college and skill lab fees are payable at RVCE via Demand Draft (DD) drawn in favour of 'The Principal, RV College of Engineering', payable at Bengaluru, or online via the official RVCE portal.\n"
+                "  - Candidates submit the DD to the cashier at the Civil Engineering Department Computer Lab, complete online entry, and collect their official fee receipt.\n\n"
+                "• Payment Instructions: Mention Student Name, Mobile Number, and Branch Name on the back of the DD."
+            )
+
+        # 6. Specific Management Quota
+        if any(k in lowered_q for k in ["management", "mgmt"]):
+            return (
+                "Management quota fees at RVCE are structured as follows:\n\n"
+                "• Postgraduate (1st Year M.Tech & MCA) Management Quota:\n"
+                "  - Total fees payable at RVCE at admission: Rs. 51,880/- for Karnataka students (College Fees Rs. 40,000/- + VTU Fees Rs. 11,880/-) or Rs. 53,680/- for Outside Karnataka students (College Fees Rs. 40,000/- + VTU Fees Rs. 13,680/-).\n"
+                "  - Payment is made via Demand Draft (DD) drawn in favour of 'RV College of Engineering', payable at Bengaluru, or online via the SAP portal.\n\n"
+                "• Undergraduate (1st Year B.E.) Management Quota:\n"
+                "  - Fee structures, seat availability, and admission criteria are regulated directly by the Rashtreeya Sikshana Samithi Trust (RSST) / Management Office. Prospective candidates must contact the RVCE Principal's Office or RSST Management Office directly for current UG management quota fee schedules."
+            )
+
+        # 7. Postgraduate (PG / M.Tech / MCA) fees
         if any(k in lowered_q for k in ["pg", "postgraduate", "mtech", "m.tech", "mca", "pgcet"]) and not any(
             k in lowered_q for k in ["ug", "undergraduate", "b.e", "be"]
         ):
@@ -693,7 +766,7 @@ def _extract_most_relevant_answer(
                 "• Payment Instructions: Demand Draft (DD) drawn in favour of 'RV College of Engineering', payable at Bengaluru, or online via the SAP portal. Mention Student Name, Mobile Number, and Branch Name on the back of the DD."
             )
 
-        # 5. General college fee overview
+        # 8. General college fee overview
         return (
             "RVCE admission fees for the 2026-27 academic year are organized by academic level and quota:\n\n"
             "1. Undergraduate (1st Year B.E.):\n"
@@ -1168,6 +1241,10 @@ def build_evidence_answer(
 
 
 _INTENT_TO_TOPICS: Dict[str, Set[str]] = {
+    "admission_fee": {"admissions", "fees_finance"},
+    "hostel_fee": {"facilities_hostels", "fees_finance"},
+    "fee_penalty": {"fees_finance", "examinations_regulations"},
+    "general_fee": {"fees_finance", "admissions"},
     "admissions": {"admissions"},
     "fees_finance": {"fees_finance"},
     "academics_exams": {"academics_exams", "examinations_regulations"},
@@ -1325,6 +1402,10 @@ def answer_question(
         "ecell": "e-cell",
         "intership": "internship",
         "internships": "internship internship",
+        "kket": "kcet",
+        "kkea": "kea",
+        "comed-k": "comedk",
+        "mgmt": "management",
     }
     raw_question = question.strip()
     for typo, correction in typo_map.items():
@@ -1347,8 +1428,19 @@ def answer_question(
         if subj_q and len(subj_q) >= 3:
             retrieval_query = subj_q
 
-    if "hostel" in q_lower:
+    # Use entity-aware retrieval expansion to ensure KCET/KEA/COMEDK/hostel circulars are retrieved accurately
+    retrieval_expansion = str(intent_info.get("retrieval_expansion") or "").strip()
+    entities = intent_info.get("entities") or {}
+    quota = entities.get("admission_quota")
+
+    if quota in {"kea_cet", "comedk", "management", "pgcet", "multiple"}:
         effective_threshold = min(effective_threshold, 0.02)
+        if retrieval_expansion:
+            retrieval_query = f"{effective_question} {retrieval_expansion}"
+    elif "hostel" in q_lower or intent_info.get("normalized_intent") in {"hostel_fee", "facilities_hostels"}:
+        effective_threshold = min(effective_threshold, 0.02)
+        if retrieval_expansion:
+            retrieval_query = f"{effective_question} {retrieval_expansion}"
     elif any(k in q_lower for k in ["pgcet", "m.tech", "mtech", "mca"]):
         effective_threshold = min(effective_threshold, 0.02)
         retrieval_query = f"{effective_question} PGCET M.Tech MCA admission procedure mandatory documents KEA"
