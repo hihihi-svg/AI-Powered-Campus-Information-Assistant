@@ -1,0 +1,92 @@
+query_id,query_text,intent,split_group
+Q2001,"What was the previous KCET cutoff for CSE?",admissions_cutoff,train
+Q2002,"cutoff rank for cse branch in kcet round 2",admissions_cutoff,test
+Q2003,"What is the closing rank for Information Science through COMEDK?",admissions_cutoff,train
+Q2004,"COMEDK round 1 and round 2 cutoff ranks for AIML at RVCE",admissions_cutoff,train
+Q2005,"What rank is needed in KCET to get Aerospace engineering?",admissions_cutoff,train
+Q2006,"previous year cutoff comparison between CSE and ISE",admissions_cutoff,train
+Q2007,"What is the minimum KCET rank required for Cyber Security?",admissions_cutoff,train
+Q2008,"RVCE closing ranks for Electronics and Communication in COMEDK round 3",admissions_cutoff,train
+Q2009,"What is the expected KCET cutoff rank for GM category in Computer Science?",admissions_cutoff,test
+Q2010,"historical cutoff ranks for mechanical engineering through KCET",admissions_cutoff,train
+Q2011,"What is the tuition fee for first year B.E. admission through KCET?",admission_fees,train
+Q2012,"What are the fees for students joining under COMEDK quota?",admission_fees,train
+Q2013,"management quota fee structure for M.Tech and MCA programmes",admission_fees,train
+Q2014,"Is there any late fee fine if semester fee payment is delayed?",admission_fees,train
+Q2015,"Can I pay the college tuition fees in two installments?",admission_fees,train
+Q2016,"What are the balance fees payable at RVCE after KEA seat confirmation?",admission_fees,train
+Q2017,"Where should students submit the bank challan receipt after online payment?",admission_fees,test
+Q2018,"What is the skill lab and college fee for higher semester engineering?",admission_fees,train
+Q2019,"How much is the fee penalty per day for late tuition submission?",admission_fees,train
+Q2020,"tuition fees for non-karnataka students admitted through COMEDK",admission_fees,test
+Q2021,"What is the procedure for B.E. admission through COMEDK quota?",admissions_procedure,train
+Q2022,"Can diploma students apply for lateral entry into 2nd year engineering via DCET?",admissions_procedure,train
+Q2023,"How do I get a seat under management quota in RVCE?",admissions_procedure,train
+Q2024,"List of mandatory original documents required for M.Tech PGCET verification",admissions_procedure,train
+Q2025,"What is the step-by-step reporting process at the campus after KEA counselling allotment?",admissions_procedure,train
+Q2026,"What certificates are needed for Karnataka candidate category reservation verification?",admissions_procedure,train
+Q2027,"What is the procedure to withdraw admission and get a refund of documents?",admissions_procedure,test
+Q2028,"How to register on the RVCE candidate admission portal before physical reporting?",admissions_procedure,train
+Q2029,"What is the eligibility criteria for NRI and foreign national admissions?",admissions_procedure,train
+Q2030,"documents checklist for 1st year B.E. physical reporting at admission centre",admissions_procedure,test
+Q2031,"What was the average package and highest salary offered in 2027 campus placements?",placements,train
+Q2032,"Which top companies visit the campus for 6-month internships and FTE roles?",placements,train
+Q2033,"What is the highest placement package in 2027 batch?",placements,train
+Q2034,"How many final vs non-final offers were made in 2027 placements?",placements,train
+Q2035,"Compare placement statistics between Computer Science and Information Science",placements,train
+Q2036,"What package and stipend did Auxia offer to RVCE students?",placements,train
+Q2037,"Can students with an active backlog sit for mass recruiter placement drives?",placements,test
+Q2038,"Which companies offered CTC greater than 30 LPA in 2027?",placements,train
+Q2039,"Who are the major recruiters hiring from AIML and Cybersecurity branches?",placements,train
+Q2040,"What is the average CTC for CSE branch in 2027 placements?",placements,test
+Q2041,"When will the academic calendar and first semester exam timetable be released?",academics_exams,train
+Q2042,"What is the minimum attendance percentage required to be eligible for fast-track examinations?",academics_exams,train
+Q2043,"What is the procedure to apply for grade card revaluation and photocopy of answer scripts?",academics_exams,train
+Q2044,"How many credits are needed to register for 5th semester under autonomous scheme?",academics_exams,train
+Q2045,"Where can I download the autonomous 2022 scheme syllabus for mechanical engineering?",academics_exams,test
+Q2046,"When are the Semester End Examinations (SEE) scheduled for higher semester students?",academics_exams,train
+Q2047,"What is the schedule for Paper Viewing Process (PVP) after SEE exam results?",academics_exams,train
+Q2048,"What are the passing credit requirements and SGPA calculation rules at RVCE?",academics_exams,train
+Q2049,"fast track examination timetable and course registration guidelines",academics_exams,train
+Q2050,"rules regarding makeup examinations and attendance shortage condonation",academics_exams,test
+Q2051,"Who is the current Head of Department for Computer Science and Engineering?",departments_faculty,train
+Q2052,"Where is the cabin of the Aerospace Engineering department coordinator?",departments_faculty,train
+Q2053,"faculty list and research areas for biotechnology department",departments_faculty,train
+Q2054,"How can I contact the civil engineering department office and HOD?",departments_faculty,train
+Q2055,"Does the MCA department offer specialized electives in cloud computing?",departments_faculty,test
+Q2056,"Who is the Dean of Academics at RVCE and where is their office?",departments_faculty,train
+Q2057,"faculty directory and contact email addresses for Electronics and Communication",departments_faculty,train
+Q2058,"What engineering undergraduate programmes are offered by the Chemical Engineering dept?",departments_faculty,train
+Q2059,"Who is the coordinator for the Artificial Intelligence & Machine Learning department?",departments_faculty,train
+Q2060,"contact details and office location of the Dean of Student Affairs",departments_faculty,test
+Q2061,"How do I apply for on-campus boys hostel accommodation?",facilities_hostels,train
+Q2062,"What are the central library working hours during exam week and on Sundays?",facilities_hostels,train
+Q2063,"What are the hostel in-time curfew rules and night gate timings for freshers?",facilities_hostels,train
+Q2064,"Does the campus have badminton, gym, and sports complex facilities for students?",facilities_hostels,train
+Q2065,"Is mess food fee included in hostel charges or paid separately?",facilities_hostels,test
+Q2066,"What are the room rent and caution deposit amounts for girls hostel?",facilities_hostels,train
+Q2067,"hostel warden contact numbers and emergency helpline for campus residents",facilities_hostels,train
+Q2068,"What facilities are available inside the RVCE health centre and dispensary?",facilities_hostels,train
+Q2069,"canteen and food court locations across the campus",facilities_hostels,train
+Q2070,"rules for visitors and parents staying at the campus guest house",facilities_hostels,test
+Q2071,"How can I join student technical clubs like Astra Robotics, Team Chimera, or Ashwa?",student_services,train
+Q2072,"Where do I submit the application to get a bonafide student certificate or letter?",student_services,train
+Q2073,"What is the NSS and NCC enrollment process for first year engineering freshers?",student_services,train
+Q2074,"How do I register for NAD Digilocker to access my official semester grade sheets?",student_services,train
+Q2075,"Who should student teams contact for organizing an inter-college cultural fest event?",student_services,test
+Q2076,"How to apply for official campus bus transport pass and route details?",student_services,train
+Q2077,"Where is the scholarship section in the administrative office to verify SSP post-matric status?",student_services,train
+Q2078,"process for getting student ID card replacement if lost or damaged",student_services,train
+Q2079,"How to participate in entrepreneurship activities and hackathons through E-Cell?",student_services,train
+Q2080,"procedure to get official transcript and rank certificate for higher studies",student_services,test
+Q2081,"What is the official contact email and reception phone number for RVCE?",general_college_info,train
+Q2082,"Is RV College of Engineering affiliated with VTU or a deemed university?",general_college_info,train
+Q2083,"What is the exact college address and nearest metro station to reach the campus?",general_college_info,train
+Q2084,"Where can I find the mandatory AICTE disclosures, NAAC grade, and NIRF ranking report?",general_college_info,train
+Q2085,"Who is the current Principal of RV College of Engineering?",general_college_info,test
+Q2086,"What is the history, founding trust, and autonomous accreditation status of RVCE?",general_college_info,train
+Q2087,"working hours of the main administrative office and reception counter",general_college_info,train
+Q2088,"How far is the RVCE campus from Majestic railway station and Kempegowda airport?",general_college_info,train
+Q2089,"What is the pin code and postal address of RV Vidyanikethan post campus?",general_college_info,train
+Q2090,"official website URL and social media channels of RVCE",general_college_info,test
+

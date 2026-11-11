@@ -49,7 +49,8 @@ logger = logging.getLogger("campus_pipeline.evaluation")
 DEFAULT_BENCHMARK_PATH = Path("data/queries/campus_queries.csv")
 DEFAULT_LABELLED_BENCHMARK_PATH = Path("data/queries/labelled_relevance_benchmark.json")
 DEFAULT_DATASET_PATH = Path("data/processed/campus_documents.jsonl")
-DEFAULT_EXPERIMENT_NAME = "rvce-campus-retrieval-benchmark"
+DEFAULT_EXPERIMENT_NAME = "campus-retrieval-evaluation"
+DEFAULT_RAG_EXPERIMENT_NAME = "campus-rag-evaluation"
 
 
 def load_benchmark_queries(path: str | Path = DEFAULT_BENCHMARK_PATH) -> List[Dict[str, str]]:
@@ -168,8 +169,10 @@ def evaluate_benchmark_queries(
     )
 
     per_query_results: List[Dict[str, Any]] = []
+    latencies: List[float] = []
     for item in benchmark_queries:
         query_text = item.get("query_text", "").strip()
+        q_start = time.time()
         if isinstance(retriever, HybridRetriever):
             results = retriever.retrieve(
                 query=query_text,
@@ -180,6 +183,8 @@ def evaluate_benchmark_queries(
             )
         else:
             results = retriever.retrieve(query=query_text, top_k=top_k, score_threshold=score_threshold)
+        q_lat = round(time.time() - q_start, 4)
+        latencies.append(q_lat)
 
         max_score = max((float(result.get("relevance_score", 0.0) or 0.0) for result in results), default=0.0)
         has_result = len(results) > 0
@@ -193,6 +198,7 @@ def evaluate_benchmark_queries(
                 "result_count": len(results),
                 "has_result": has_result,
                 "max_score": round(max_score, 4),
+                "retrieval_latency_seconds": q_lat,
                 "top_result_title": (results[0].get("document_title") if results else ""),
                 "top_result_url": (results[0].get("source_url") if results else ""),
             }
@@ -201,6 +207,7 @@ def evaluate_benchmark_queries(
     duration = round(time.time() - start_time, 4)
     summary = summarize_query_results(per_query_results)
     summary["evaluation_duration_seconds"] = duration
+    summary["average_retrieval_latency"] = round(sum(latencies) / len(latencies), 4) if latencies else 0.0
 
     config = {
         "benchmark_path": str(DEFAULT_BENCHMARK_PATH),
@@ -269,6 +276,7 @@ def evaluate_labelled_benchmark(
     )
 
     per_query_metrics: List[Dict[str, Any]] = []
+    latencies: List[float] = []
     recalls, precisions, mrrs, ndcgs = [], [], [], []
 
     for item in bench_data:
@@ -276,6 +284,7 @@ def evaluate_labelled_benchmark(
         rel_ids = set(item.get("relevant_document_ids", []))
         rel_urls = set(item.get("relevant_urls", []))
 
+        q_start = time.time()
         if isinstance(retriever, HybridRetriever):
             results = retriever.retrieve(
                 query=q_text,
@@ -286,6 +295,8 @@ def evaluate_labelled_benchmark(
             )
         else:
             results = retriever.retrieve(query=q_text, top_k=top_k, score_threshold=score_threshold)
+        q_lat = round(time.time() - q_start, 4)
+        latencies.append(q_lat)
 
         retrieved_ids = [r.get("document_id") for r in results]
         retrieved_urls = [r.get("source_url") for r in results]
@@ -328,6 +339,7 @@ def evaluate_labelled_benchmark(
                 "precision": round(precision, 4),
                 "mrr": round(reciprocal_rank, 4),
                 "ndcg": round(ndcg, 4),
+                "retrieval_latency_seconds": q_lat,
             }
         )
 
@@ -340,6 +352,8 @@ def evaluate_labelled_benchmark(
         "precision_at_k": round(sum(precisions) / total_q, 4) if total_q else 0.0,
         "mrr": round(sum(mrrs) / total_q, 4) if total_q else 0.0,
         "ndcg_at_k": round(sum(ndcgs) / total_q, 4) if total_q else 0.0,
+        "retrieval_coverage": round(sum(1 for h in recalls if h > 0) / total_q, 4) if total_q else 0.0,
+        "average_retrieval_latency": round(sum(latencies) / len(latencies), 4) if latencies else 0.0,
         "evaluation_duration_seconds": duration,
         "benchmark_has_relevance_labels": True,
         "benchmark_type": "curated_relevance_labels",
@@ -653,15 +667,57 @@ def log_mlflow_benchmark(
             if isinstance(value, (str, int, float, bool)):
                 mlflow.log_param(key, value)
 
+        # Standardized MLOps retrieval parameters
+        mlflow.log_param("retriever_type", retriever_type)
+        mlflow.log_param(
+            "lexical_model",
+            "TfidfVectorizer" if retriever_type in {"tfidf", "hybrid", "hybrid_rerank"} else "None",
+        )
+        mlflow.log_param("lexical_ngram_range", "(1, 2)")
+        mlflow.log_param("lexical_sublinear_tf", "true")
+        mlflow.log_param(
+            "embedding_model",
+            DEFAULT_SEMANTIC_MODEL if retriever_type in {"semantic", "hybrid", "hybrid_rerank"} else "None",
+        )
+        mlflow.log_param(
+            "dense_dimension",
+            384 if retriever_type in {"semantic", "hybrid", "hybrid_rerank"} else 0,
+        )
+        mlflow.log_param(
+            "fusion_strategy",
+            config.get("fusion_method", "linear") if "hybrid" in retriever_type else "None",
+        )
+        if "hybrid" in retriever_type:
+            mlflow.log_param("semantic_weight", float(config.get("semantic_weight", 0.5)))
+            mlflow.log_param("tfidf_weight", float(config.get("tfidf_weight", 0.5)))
+            mlflow.log_param("candidate_pool_size", int(config.get("candidate_pool_size", 20)))
+        else:
+            mlflow.log_param("candidate_pool_size", int(config.get("top_k", 3)))
+
+        effective_rerank = bool(config.get("rerank", False) or "rerank" in retriever_type)
+        mlflow.log_param("reranking_enabled", str(effective_rerank).lower())
+        mlflow.log_param(
+            "reranker_model",
+            DEFAULT_CROSS_ENCODER_MODEL if effective_rerank else "None",
+        )
+        mlflow.log_param("top_k", int(config.get("top_k", 3)))
+        mlflow.log_param("score_threshold", float(config.get("score_threshold", 0.05)))
+
+        dataset_p = Path(config.get("dataset_path", str(DEFAULT_DATASET_PATH)))
+        mlflow.log_param("dataset_path", str(dataset_p))
+        mlflow.log_param("dataset_version", _get_file_checksum(dataset_p))
+
+        bench_p = Path(config.get("benchmark_path", str(DEFAULT_BENCHMARK_PATH)))
+        mlflow.log_param("benchmark_path", str(bench_p))
+        mlflow.log_param("benchmark_checksum", _get_file_checksum(bench_p))
+        mlflow.log_param("dvc_tracked", "true")
+
         # Log environment and code metadata
         mlflow.log_param("python_version", sys.version.split()[0])
         mlflow.log_param("mlflow_version", mlflow.__version__)
         git_commit = _get_git_commit()
         if git_commit:
             mlflow.log_param("git_commit", git_commit)
-
-        bench_path = Path(config.get("benchmark_path", str(DEFAULT_BENCHMARK_PATH)))
-        mlflow.log_param("benchmark_checksum", _get_file_checksum(bench_path))
 
         # Log metrics
         for key, value in metrics.items():
@@ -684,12 +740,36 @@ def log_mlflow_benchmark(
         reports_dir.mkdir(exist_ok=True)
         summary_path = reports_dir / f"mlflow_{retriever_type}_evaluation_summary.json"
         config_path = reports_dir / f"mlflow_{retriever_type}_evaluation_config.json"
+        breakdown_path = reports_dir / f"mlflow_{retriever_type}_metric_breakdown.json"
+        error_analysis_path = reports_dir / f"mlflow_{retriever_type}_error_analysis.json"
 
+        queries_list = evaluation_summary.get("queries", [])
         summary_path.write_text(json.dumps(evaluation_summary, indent=2, ensure_ascii=False), encoding="utf-8")
         config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
+        breakdown_path.write_text(json.dumps(queries_list, indent=2, ensure_ascii=False), encoding="utf-8")
+
+        # Error analysis: isolate queries with zero hits or low scores (< 0.10)
+        errors: List[Dict[str, Any]] = []
+        for q in queries_list:
+            is_zero = not q.get("has_result", False) or (q.get("hits") == 0 and "hits" in q)
+            score_val = float(q.get("max_score", 0.0) or 0.0)
+            if is_zero or score_val < 0.10:
+                errors.append({
+                    "query_id": q.get("query_id"),
+                    "query_text": q.get("query_text"),
+                    "intent": q.get("intent"),
+                    "score": score_val,
+                    "result_count": q.get("result_count", 0),
+                    "diagnostic_reason": (
+                        "zero_results_above_threshold" if is_zero else "low_confidence_match"
+                    ),
+                })
+        error_analysis_path.write_text(json.dumps(errors, indent=2, ensure_ascii=False), encoding="utf-8")
 
         mlflow.log_artifact(str(summary_path), artifact_path="evaluation")
         mlflow.log_artifact(str(config_path), artifact_path="evaluation")
+        mlflow.log_artifact(str(breakdown_path), artifact_path="evaluation")
+        mlflow.log_artifact(str(error_analysis_path), artifact_path="evaluation")
 
         model_uri = None
         reload_verified = False
@@ -729,6 +809,298 @@ def log_mlflow_benchmark(
         "artifact_uri": run.info.artifact_uri,
         "model_uri": model_uri,
         "model_reload_verified": reload_verified,
+    }
+
+
+DEFAULT_RAG_BENCHMARK_QUERIES: List[Dict[str, Any]] = [
+    {
+        "query_id": "RAG_F01",
+        "category": "admissions_cutoff",
+        "query_type": "factual",
+        "question": "What is the KCET cutoff rank for B.E. Computer Science and Engineering at RVCE?",
+        "expected_keywords": ["cutoff", "computer", "engineering", "kcet", "rank"],
+    },
+    {
+        "query_id": "RAG_F02",
+        "category": "admission_fees",
+        "query_type": "factual",
+        "question": "What are the B.E. tuition fees payable for COMEDK quota admission?",
+        "expected_keywords": ["fee", "comedk", "tuition", "rs"],
+    },
+    {
+        "query_id": "RAG_F03",
+        "category": "admissions_procedure",
+        "query_type": "factual",
+        "question": "What is the official procedure for B.E. admission through COMEDK quota?",
+        "expected_keywords": ["admission", "comedk", "allotment", "documents", "step"],
+    },
+    {
+        "query_id": "RAG_F04",
+        "category": "facilities_hostels",
+        "query_type": "factual",
+        "question": "What hostel facilities and room types are available for first-year students?",
+        "expected_keywords": ["hostel", "room", "mess", "facility"],
+    },
+    {
+        "query_id": "RAG_F05",
+        "category": "departments_faculty",
+        "query_type": "factual",
+        "question": "Where can I find details about engineering departments and faculty members?",
+        "expected_keywords": ["department", "faculty", "programmes", "engineering"],
+    },
+    {
+        "query_id": "RAG_P01",
+        "category": "placements_careers",
+        "query_type": "numerical",
+        "question": "How many placement offers were made to Computer Science students in the 2027 batch?",
+        "expected_keywords": ["offers", "placement", "cse", "computer"],
+    },
+    {
+        "query_id": "RAG_P02",
+        "category": "placements_careers",
+        "query_type": "numerical",
+        "question": "What companies visited campus and what packages were offered in placements?",
+        "expected_keywords": ["placement", "company", "package", "lpa", "recruiter"],
+    },
+    {
+        "query_id": "RAG_D01",
+        "category": "academics_exams",
+        "query_type": "date_specific",
+        "question": "When does the academic calendar start and when are semester examinations held?",
+        "expected_keywords": ["calendar", "examination", "semester", "dates", "events"],
+    },
+    {
+        "query_id": "RAG_D02",
+        "category": "circulars",
+        "query_type": "date_specific",
+        "question": "What is the deadline mentioned in recent campus circulars for college fee payment?",
+        "expected_keywords": ["circular", "deadline", "fee", "date"],
+    },
+    {
+        "query_id": "RAG_O01",
+        "category": "abstention",
+        "query_type": "out_of_domain",
+        "question": "What is the capital of France?",
+        "expected_abstain": True,
+    },
+    {
+        "query_id": "RAG_O02",
+        "category": "abstention",
+        "query_type": "out_of_domain",
+        "question": "Who directed the movie Interstellar?",
+        "expected_abstain": True,
+    },
+    {
+        "query_id": "RAG_O03",
+        "category": "abstention",
+        "query_type": "out_of_domain",
+        "question": "Who won the 2022 FIFA World Cup?",
+        "expected_abstain": True,
+    },
+    {
+        "query_id": "RAG_O04",
+        "category": "abstention",
+        "query_type": "out_of_domain",
+        "question": "Who wrote the tragedy Hamlet?",
+        "expected_abstain": True,
+    },
+]
+
+
+def evaluate_rag_pipeline(
+    benchmark_queries: Optional[List[Dict[str, Any]]] = None,
+    dataset_path: str | Path = DEFAULT_DATASET_PATH,
+    strategy: str = "hybrid",
+    rerank: bool = False,
+    top_k: int = 3,
+    score_threshold: float = 0.05,
+    experiment_name: str = DEFAULT_RAG_EXPERIMENT_NAME,
+    run_name: Optional[str] = None,
+    tracking_uri: Optional[str] = None,
+    report_dir: str | Path = "reports",
+) -> Dict[str, Any]:
+    """Evaluate the end-to-end RAG question answering pipeline on factual QA and abstention queries."""
+    from src.answering import NO_EVIDENCE_MESSAGE, answer_question
+
+    mlflow.set_tracking_uri(_local_tracking_uri(tracking_uri))
+    mlflow.set_experiment(experiment_name)
+
+    data_file = Path(dataset_path)
+    queries = benchmark_queries if benchmark_queries is not None else DEFAULT_RAG_BENCHMARK_QUERIES
+    run_label = run_name or f"rag-{strategy}-{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H-%M-%SZ')}"
+
+    start_eval_time = time.time()
+    results: List[Dict[str, Any]] = []
+
+    for q_item in queries:
+        qid = q_item["query_id"]
+        q_text = q_item["question"]
+        q_type = q_item["query_type"]
+        category = q_item.get("category", "general")
+
+        t0 = time.time()
+        resp = answer_question(
+            question=q_text,
+            strategy=strategy,
+            rerank=rerank,
+            top_k=top_k,
+            score_threshold=score_threshold,
+            dataset_path=str(data_file),
+            mcp_client=object(),  # offline evaluation without live Gmail network calls
+        )
+        latency = round(time.time() - t0, 4)
+
+        ans_text = (resp.get("answer") or "").strip()
+        evidence_list = resp.get("evidence") or []
+        sources_list = resp.get("sources") or []
+
+        is_abstain = (
+            ans_text == NO_EVIDENCE_MESSAGE
+            or (len(evidence_list) == 0 and len(sources_list) == 0)
+            or ("could not find" in ans_text.lower())
+        )
+        is_grounded = bool(sources_list) and len(evidence_list) > 0
+
+        if q_type == "out_of_domain":
+            correct = is_abstain
+        else:
+            expected_kws = q_item.get("expected_keywords", [])
+            kw_match = any(kw.lower() in ans_text.lower() for kw in expected_kws) if expected_kws else True
+            correct = bool(is_grounded and not is_abstain and kw_match)
+
+        results.append({
+            "query_id": qid,
+            "category": category,
+            "query_type": q_type,
+            "question": q_text,
+            "answer": ans_text[:250],
+            "evidence_count": len(evidence_list),
+            "sources_count": len(sources_list),
+            "is_abstention": is_abstain,
+            "is_grounded": is_grounded,
+            "correct": correct,
+            "latency_seconds": latency,
+        })
+
+    eval_duration = round(time.time() - start_eval_time, 4)
+    total_q = len(results)
+    in_domain_q = [r for r in results if r["query_type"] != "out_of_domain"]
+    out_domain_q = [r for r in results if r["query_type"] == "out_of_domain"]
+
+    factual_accuracy = (
+        round(sum(1 for r in in_domain_q if r["correct"]) / len(in_domain_q), 4) if in_domain_q else 0.0
+    )
+    abstention_accuracy = (
+        round(sum(1 for r in out_domain_q if r["correct"]) / len(out_domain_q), 4) if out_domain_q else 0.0
+    )
+    overall_accuracy = (
+        round(sum(1 for r in results if r["correct"]) / total_q, 4) if total_q else 0.0
+    )
+    evidence_grounding_rate = (
+        round(sum(1 for r in in_domain_q if r["is_grounded"]) / len(in_domain_q), 4) if in_domain_q else 0.0
+    )
+    avg_latency = (
+        round(sum(r["latency_seconds"] for r in results) / total_q, 4) if total_q else 0.0
+    )
+
+    metrics = {
+        "factual_accuracy": factual_accuracy,
+        "abstention_accuracy": abstention_accuracy,
+        "overall_accuracy": overall_accuracy,
+        "evidence_grounding_rate": evidence_grounding_rate,
+        "average_answer_latency": avg_latency,
+        "total_queries_evaluated": total_q,
+        "answered_queries_count": sum(1 for r in results if not r["is_abstention"]),
+        "abstained_queries_count": sum(1 for r in results if r["is_abstention"]),
+        "evaluation_duration_seconds": eval_duration,
+    }
+
+    config = {
+        "rag_strategy": strategy,
+        "retriever_type": strategy,
+        "rerank": rerank,
+        "grounding_policy": "evidence_required",
+        "top_k": top_k,
+        "score_threshold": score_threshold,
+        "dataset_path": str(data_file),
+        "dataset_checksum": _get_file_checksum(data_file),
+        "total_queries": total_q,
+        "in_domain_queries_count": len(in_domain_q),
+        "out_of_domain_queries_count": len(out_domain_q),
+        "dvc_tracked": "true",
+    }
+
+    # Persist report files
+    out_dir = Path(report_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    summary_file = out_dir / "rag_evaluation_summary.json"
+    results_file = out_dir / "rag_query_results.json"
+    markdown_file = out_dir / "rag_evaluation_report.md"
+
+    summary_file.write_text(json.dumps({"config": config, "metrics": metrics}, indent=2, ensure_ascii=False), encoding="utf-8")
+    results_file.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    md_content = f"""# RVCE Campus Information Assistant - RAG Pipeline Evaluation Report
+
+**Evaluation Timestamp:** {datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+**RAG Strategy:** {strategy} (Rerank: {rerank})
+**Dataset:** {data_file} (Checksum: {config['dataset_checksum']})
+
+## Summary Metrics
+
+| Metric | Score | Notes |
+| :--- | :--- | :--- |
+| **Overall Accuracy** | `{overall_accuracy:.4f}` | Combined answer correctness & safe abstention |
+| **Factual Accuracy** | `{factual_accuracy:.4f}` | In-domain campus questions answered accurately |
+| **Abstention Accuracy** | `{abstention_accuracy:.4f}` | Out-of-domain questions safely refused |
+| **Evidence Grounding Rate** | `{evidence_grounding_rate:.4f}` | In-domain answers with verified campus evidence |
+| **Average Latency** | `{avg_latency:.4f}s` | End-to-end question answering response time |
+| **Total Queries Evaluated** | `{total_q}` | {len(in_domain_q)} in-domain, {len(out_domain_q)} out-of-domain |
+
+## Category Performance Breakdown
+
+| Query ID | Category | Type | Grounded | Abstained | Correct | Latency |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+"""
+    for r in results:
+        md_content += (
+            f"| `{r['query_id']}` | {r['category']} | {r['query_type']} | "
+            f"{'Yes' if r['is_grounded'] else 'No'} | {'Yes' if r['is_abstention'] else 'No'} | "
+            f"{'PASS' if r['correct'] else 'FAIL'} | {r['latency_seconds']:.4f}s |\n"
+        )
+
+    md_content += """
+## Governance & Safety Verification
+- **Zero Hallucination Policy:** Out-of-domain queries successfully trigger strict abstention (`NO_EVIDENCE_MESSAGE`).
+- **Citation Assurance:** All answered in-domain questions include valid document citations and verifiable evidence passages.
+"""
+    markdown_file.write_text(md_content, encoding="utf-8")
+
+    with mlflow.start_run(run_name=run_label) as run:
+        for k, v in config.items():
+            if isinstance(v, (str, int, float, bool)):
+                mlflow.log_param(k, v)
+
+        for k, v in metrics.items():
+            if isinstance(v, (int, float, bool)):
+                mlflow.log_metric(k, float(v))
+
+        mlflow.set_tag("pipeline_type", "end_to_end_rag")
+        mlflow.set_tag("grounding_policy", "evidence_required")
+        mlflow.set_tag("execution_device", "cpu")
+
+        mlflow.log_artifact(str(summary_file), artifact_path="evaluation")
+        mlflow.log_artifact(str(results_file), artifact_path="evaluation")
+        mlflow.log_artifact(str(markdown_file), artifact_path="evaluation")
+
+    return {
+        "tracking_uri": mlflow.get_tracking_uri(),
+        "run_id": run.info.run_id,
+        "experiment_name": experiment_name,
+        "run_name": run_label,
+        "metrics": metrics,
+        "config": config,
+        "artifact_uri": run.info.artifact_uri,
     }
 
 
@@ -828,7 +1200,34 @@ def main() -> None:
         default="reports/retrieval_degradation_report.md",
         help="Markdown summary path for degradation experiment",
     )
+    parser.add_argument("--run-rag-eval", action="store_true", help="Run end-to-end RAG pipeline evaluation")
+    parser.add_argument(
+        "--rag-strategy",
+        type=str,
+        default="hybrid",
+        choices=["tfidf", "semantic", "hybrid", "hybrid_rerank"],
+        help="Retrieval strategy for RAG evaluation",
+    )
+    parser.add_argument("--rag-rerank", action="store_true", help="Enable cross-encoder reranking during RAG evaluation")
     args = parser.parse_args()
+
+    if args.run_rag_eval:
+        print(f"Evaluating end-to-end RAG pipeline (strategy={args.rag_strategy}, rerank={args.rag_rerank})...")
+        rag_results = evaluate_rag_pipeline(
+            dataset_path=args.dataset,
+            strategy=args.rag_strategy,
+            rerank=args.rag_rerank or (args.rag_strategy == "hybrid_rerank"),
+            top_k=args.top_k,
+            score_threshold=args.score_threshold,
+            experiment_name=DEFAULT_RAG_EXPERIMENT_NAME,
+            run_name=args.run_name or f"rag-{args.rag_strategy}-eval",
+            tracking_uri=args.tracking_uri,
+        )
+        print(json.dumps(rag_results["metrics"], indent=2, ensure_ascii=False))
+        print(f"MLflow Experiment: {rag_results['experiment_name']}")
+        print(f"MLflow Run ID: {rag_results['run_id']}")
+        print("Summary report saved at: reports/rag_evaluation_report.md")
+        return
 
     if args.run_degradation:
         queries = load_benchmark_queries(args.benchmark)

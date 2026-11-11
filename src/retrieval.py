@@ -12,6 +12,7 @@ Features:
 - Low-relevance filtering without fabricating answers
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -821,21 +822,69 @@ class SemanticRetriever:
         records = _load_dataset_records(resolved_path)
         return self.index_records(records)
 
+    def compute_corpus_fingerprint(self) -> str:
+        """Compute a deterministic SHA-256 fingerprint over all indexed corpus chunks and texts."""
+        hasher = hashlib.sha256()
+        for chunk in self.chunks:
+            cid = getattr(chunk, "chunk_id", "") or ""
+            txt = getattr(chunk, "searchable_text", None) or getattr(chunk, "text", "") or ""
+            hasher.update(cid.encode("utf-8", errors="ignore"))
+            hasher.update(b"\x00")
+            hasher.update(txt.encode("utf-8", errors="ignore"))
+            hasher.update(b"\x00")
+        return hasher.hexdigest()
+
     def encode_corpus(self, batch_size: int = 32, cache_path: Optional[str] = None) -> Optional[np.ndarray]:
-        """Encode all indexed chunks once and cache embeddings in memory and on disk."""
+        """Encode all indexed chunks once and cache embeddings in memory and on disk.
+
+        Cached embeddings are reused only when the stored fingerprint and chunk count
+        match the exact content and ordering of the current corpus.
+        """
         if self.document_embeddings is not None:
             return self.document_embeddings
         if not self.chunks:
             return None
 
         effective_cache_path = _resolve_path(cache_path) if cache_path else _resolve_path(DEFAULT_EMBEDDINGS_CACHE_PATH)
+        current_fingerprint = self.compute_corpus_fingerprint()
+        meta_path = Path(effective_cache_path).with_suffix(".meta.json")
+
         if os.path.isfile(effective_cache_path):
             try:
-                cached = np.load(effective_cache_path)
-                if isinstance(cached, np.ndarray) and cached.shape[0] == len(self.chunks) and cached.ndim == 2:
-                    self.document_embeddings = cached
-                    logger.info("Loaded %d semantic embeddings from cache: %s", len(self.chunks), effective_cache_path)
-                    return self.document_embeddings
+                cache_valid = True
+                if meta_path.is_file():
+                    try:
+                        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                        if (
+                            meta.get("fingerprint") != current_fingerprint
+                            or meta.get("chunk_count") != len(self.chunks)
+                            or (meta.get("model_name") and meta.get("model_name") != self.model_name)
+                        ):
+                            logger.info(
+                                "Embedding cache fingerprint or chunk mismatch for %s; regenerating embeddings.",
+                                effective_cache_path,
+                            )
+                            cache_valid = False
+                    except Exception as meta_err:
+                        logger.warning("Failed to read embedding cache metadata %s: %s", meta_path, meta_err)
+
+                if cache_valid:
+                    cached = np.load(effective_cache_path)
+                    if isinstance(cached, np.ndarray) and cached.shape[0] == len(self.chunks) and cached.ndim == 2:
+                        self.document_embeddings = cached
+                        logger.info("Loaded %d semantic embeddings from cache: %s", len(self.chunks), effective_cache_path)
+                        # Ensure metadata is persisted if missing
+                        if not meta_path.is_file():
+                            try:
+                                meta_data = {
+                                    "chunk_count": len(self.chunks),
+                                    "fingerprint": current_fingerprint,
+                                    "model_name": self.model_name,
+                                }
+                                meta_path.write_text(json.dumps(meta_data, indent=2), encoding="utf-8")
+                            except Exception:
+                                pass
+                        return self.document_embeddings
             except Exception as load_err:
                 logger.warning("Failed to load cached embeddings from %s: %s", effective_cache_path, load_err)
 
@@ -856,7 +905,13 @@ class SemanticRetriever:
             try:
                 os.makedirs(os.path.dirname(effective_cache_path), exist_ok=True)
                 np.save(effective_cache_path, self.document_embeddings)
-                logger.info("Saved %d semantic embeddings to cache: %s", len(self.chunks), effective_cache_path)
+                meta_data = {
+                    "chunk_count": len(self.chunks),
+                    "fingerprint": current_fingerprint,
+                    "model_name": self.model_name,
+                }
+                meta_path.write_text(json.dumps(meta_data, indent=2), encoding="utf-8")
+                logger.info("Saved %d semantic embeddings and metadata to cache: %s", len(self.chunks), effective_cache_path)
             except Exception as save_err:
                 logger.warning("Failed to save embeddings to %s: %s", effective_cache_path, save_err)
             return self.document_embeddings

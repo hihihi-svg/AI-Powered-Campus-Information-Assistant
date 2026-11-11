@@ -1,0 +1,39 @@
+stages:
+  normalize_placements:
+    cmd: python -m src.scrapers.rvce_placements_scraper --use-cache --raw-path data/raw/rvce_placements_2027.json --processed-path data/processed/rvce_placements_2027.jsonl
+    deps:
+      - data/raw/rvce_placements_2027.json
+      - src/scrapers/rvce_placements_scraper.py
+    outs:
+      - data/processed/rvce_placements_2027.jsonl:
+          cache: false
+
+  generate_embeddings:
+    cmd: python -c "from src.retrieval import SemanticRetriever; r = SemanticRetriever(); r.load_and_index('data/processed/campus_documents.jsonl'); r.encode_corpus(cache_path='data/processed/corpus_semantic_embeddings.npy')"
+    deps:
+      - data/processed/campus_documents.jsonl
+      - src/retrieval.py
+    outs:
+      - data/processed/corpus_semantic_embeddings.npy:
+          cache: false
+
+  train_intent_classifier:
+    cmd: python -m src.intent_classification --dataset data/queries/campus_queries_v2.csv --report-path reports/intent_classification_v2_evaluation.json
+    deps:
+      - data/queries/campus_queries_v2.csv
+      - src/intent_classification.py
+    metrics:
+      - reports/intent_classification_v2_evaluation.json:
+          cache: false
+
+  evaluate_retrieval:
+    cmd: python -m src.evaluation --retriever hybrid --benchmark data/queries/campus_queries.csv --dataset data/processed/campus_documents.jsonl
+    deps:
+      - data/processed/campus_documents.jsonl
+      - data/queries/campus_queries.csv
+      - src/evaluation.py
+      - src/retrieval.py
+    metrics:
+      - reports/mlflow_hybrid_evaluation_summary.json:
+          cache: false
+

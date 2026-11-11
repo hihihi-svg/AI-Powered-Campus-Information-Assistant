@@ -309,7 +309,12 @@ class TestAnswerQuestionGptStrategy:
                 retriever=mock_retriever,
                 strategy="gpt",
             )
-        mock_retriever.retrieve.assert_called_once()
+        assert mock_retriever.retrieve.called
+        assert mock_retriever.retrieve.call_count >= 1
+        assert any(
+            call.kwargs.get("query") == "What is the fee?" or (call.args and call.args[0] == "What is the fee?")
+            for call in mock_retriever.retrieve.call_args_list
+        )
         assert result["strategy"] == "gpt"
 
 

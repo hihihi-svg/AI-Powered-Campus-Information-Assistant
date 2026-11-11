@@ -1,0 +1,53 @@
+{
+  "timestamp_utc": "2026-11-11T04:12:16.473587+00:00",
+  "total_queries": 2,
+  "strategy": "tfidf",
+  "rerank": false,
+  "metrics": {
+    "retrieval_relevance_rate": 1.0,
+    "context_relevance_rate": 1.0,
+    "answer_relevance_rate": 1.0,
+    "citation_grounding_rate": 1.0,
+    "abstention_accuracy": 1.0,
+    "composite_rag_score": 1.0,
+    "mean_latency_s": 0.3323,
+    "eval_duration_s": 0.66
+  },
+  "langsmith": {
+    "project": "rvce-campus-assistant",
+    "tracing_active": false,
+    "runs_recorded": 2
+  },
+  "query_evaluations": [
+    {
+      "query_id": "RAG_F01",
+      "question": "What is the KCET cutoff rank for B.E. Computer Science and Engineering at RVCE?",
+      "query_type": "factual",
+      "latency_s": 0.5499,
+      "is_abstention": false,
+      "retrieval_hit": true,
+      "context_relevance": true,
+      "answer_relevance": true,
+      "factual_correctness": true,
+      "citation_correctness": true,
+      "sources_count": 3,
+      "evidence_count": 4,
+      "answer_snippet": "The available RVCE campus records do not contain official cutoff rank tables for KCET (Computer Science & Engineering). Closing ranks and cu"
+    },
+    {
+      "query_id": "RAG_F02",
+      "question": "What are the B.E. tuition fees payable for COMEDK quota admission?",
+      "query_type": "factual",
+      "latency_s": 0.1147,
+      "is_abstention": false,
+      "retrieval_hit": true,
+      "context_relevance": true,
+      "answer_relevance": true,
+      "factual_correctness": true,
+      "citation_correctness": true,
+      "sources_count": 1,
+      "evidence_count": 4,
+      "answer_snippet": "Undergraduate (1st Year B.E.) COMED-K quota fees at RVCE for the 2026-27 academic year are structured as follows:\n\n\u2022 Tuition Fees:\n  - Paid "
+    }
+  ]
+}

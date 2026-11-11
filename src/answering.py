@@ -7,10 +7,14 @@ contextualization, and answer synthesis (extractive synthesis as well as OpenAI 
 
 from __future__ import annotations
 
+import logging
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set
+
+logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATASET_PATH = os.environ.get("CAMPUS_DATASET_PATH") or str(REPO_ROOT / "data" / "processed" / "campus_documents.jsonl")
@@ -675,8 +679,14 @@ def _extract_most_relevant_answer(
         )
 
     # Special case: Campus Fees / Fee structure / UG / PG / Penalty / IEEE Membership
-    is_fee_query = any(k in lowered_q for k in ["fee", "fees", "tuition", "cost", "charges", "penalty"]) and not any(
-        k in lowered_q for k in ["hostel", "exam", "see", "pvp", "fast track", "paper viewing"]
+    # If the query is temporal or evidence contains superseding/dated circulars, extract dynamically from evidence
+    is_temporal_or_superseding = bool(t_intent) or any(r.get("is_latest_version") is True or r.get("superseded_by") for r in usable_results) or any(
+        k in lowered_q for k in ["last date", "deadline", "due date", "when", "extended", "extension", "schedule", "circular", "notice", "latest"]
+    )
+    is_fee_query = (
+        not is_temporal_or_superseding
+        and any(k in lowered_q for k in ["fee", "fees", "tuition", "cost", "charges", "penalty"])
+        and not any(k in lowered_q for k in ["hostel", "exam", "see", "pvp", "fast track", "paper viewing"])
     )
 
     if is_fee_query:
@@ -1215,6 +1225,38 @@ def build_evidence_answer(
                 source_entry["sender"] = sender_display
             sources.append(source_entry)
 
+    # Check if this is an admissions cutoff question without cutoff rank tables in current records
+    is_cutoff_q = bool(re.search(r"\b(cutoff|cut-off|closing\s+rank|cut\s+off|last\s+rank)\b", cleaned_question.lower()))
+    if is_cutoff_q:
+        has_rank_data = any(
+            re.search(r"\b(?:rank|cutoff|closing rank)\s*[:=-]?\s*\d+\b", (r.get("text") or ""), re.IGNORECASE)
+            for r in usable_results
+        )
+        if not has_rank_data:
+            from src.entity_extraction import extract_campus_entities
+            q_ent = extract_campus_entities(cleaned_question)
+            exam_str = q_ent.get("exam") or ("KCET" if "kcet" in cleaned_question.lower() else "COMEDK" if "comedk" in cleaned_question.lower() else "KCET/COMEDK")
+            branch_str = q_ent.get("branch_name") or q_ent.get("branch") or "the requested program"
+            answer = (
+                f"The available RVCE campus records do not contain official cutoff rank tables for {exam_str} ({branch_str}). "
+                f"Closing ranks and cutoffs are released directly by examination authorities (KEA for KCET at kea.kar.nic.in, and COMEDK at comedk.org). "
+                f"Please consult official admission circulars or the RVCE admissions office for verified historical rank cutoffs."
+            )
+            if sources:
+                src_citations = []
+                for s in sources[:3]:
+                    s_name = s.get("source_title") or s.get("title")
+                    s_date = format_date_short(s.get("document_date") or s.get("received_at") or s.get("published_at"))
+                    if s_name and s_name.lower() != "unknown source":
+                        src_citations.append(f"{s_name} ({s_date})" if s_date else s_name)
+                if src_citations:
+                    answer = f"{answer}\n\nSources: {', '.join(src_citations)}"
+            return {
+                "answer": answer,
+                "evidence": evidence,
+                "sources": sources,
+            }
+
     # Clean text inside usable_results before extracting answer lines
     cleaned_usable = []
     for res in usable_results:
@@ -1246,6 +1288,10 @@ def build_evidence_answer(
 
 
 _INTENT_TO_TOPICS: Dict[str, Set[str]] = {
+    "admissions_cutoff": {"admissions", "admissions_cutoff"},
+    "admission_fees": {"admissions", "fees_finance", "admission_fees"},
+    "admissions_procedure": {"admissions", "admissions_procedure"},
+    "placements": {"placements_careers", "placements"},
     "admission_fee": {"admissions", "fees_finance"},
     "hostel_fee": {"facilities_hostels", "fees_finance"},
     "fee_penalty": {"fees_finance", "examinations_regulations"},
@@ -1256,6 +1302,7 @@ _INTENT_TO_TOPICS: Dict[str, Set[str]] = {
     "departments_faculty": {"departments_faculty", "departments_programs"},
     "placements_careers": {"placements_careers"},
     "facilities_hostels": {"facilities_hostels", "facilities_student_services"},
+    "student_services": {"student_services_clubs", "student_services", "facilities_student_services"},
     "student_services_clubs": {"student_services_clubs", "facilities_student_services"},
     "general_college_info": {"general_college_info", "general"},
 }
@@ -1382,9 +1429,36 @@ def answer_question(
     conversation_history: Optional[List[Dict[str, str]]] = None,
     reference_now: Optional[Any] = None,
     mcp_client: Optional[Any] = None,
+    tracer: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Answer a campus question using retrieved evidence, query-time Gmail MCP search, Logistic Regression intent classification, date-aware ranking, and conversational context."""
     from src.intent_classification import classify_query_intent
+    from src.tracing import get_current_tracer, is_tracing_enabled, RAGTracer
+
+    active_tracer = tracer or get_current_tracer()
+    owns_pipeline = False
+    try:
+        if active_tracer is None and is_tracing_enabled():
+            active_tracer = RAGTracer()
+            active_tracer.start_pipeline(
+                question=question if isinstance(question, str) else "",
+                strategy=strategy,
+                rerank=rerank,
+                conversation_history=conversation_history,
+            )
+            owns_pipeline = True
+        elif active_tracer is not None and getattr(active_tracer, "root_run", None) is None:
+            active_tracer.start_pipeline(
+                question=question if isinstance(question, str) else "",
+                strategy=strategy,
+                rerank=rerank,
+                conversation_history=conversation_history,
+            )
+            owns_pipeline = True
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.debug("Failed to initialize or start RAGTracer: %s", exc)
+        active_tracer = None
+        owns_pipeline = False
 
     if not dataset_path:
         dataset_path = DEFAULT_DATASET_PATH
@@ -1394,6 +1468,8 @@ def answer_question(
             dataset_path = str((REPO_ROOT / p).resolve())
 
     if not isinstance(question, str) or not question.strip():
+        if owns_pipeline and active_tracer:
+            active_tracer.end_pipeline(answer=NO_EVIDENCE_MESSAGE, is_abstention=True, sources_count=0)
         return {
             "answer": NO_EVIDENCE_MESSAGE,
             "evidence": [],
@@ -1430,9 +1506,36 @@ def answer_question(
     effective_question = _contextualize_followup_query(raw_question, conversation_history=conversation_history)
     temporal_info = parse_temporal_query(raw_question, reference_now=reference_now)
 
+    if active_tracer:
+        active_tracer.trace_intent(raw_question, intent_info, temporal_info=temporal_info)
+
+    # 2.1 Fast-path deterministic answer for quantitative & structured placement questions
+    from src.placement_analytics import answer_quantitative_placement_query, search_placement_records
+    placement_ans = answer_quantitative_placement_query(effective_question)
+    if placement_ans is not None:
+        if active_tracer:
+            active_tracer.trace_generation(
+                model_name="placement_analytics_engine",
+                answer=placement_ans.get("answer", ""),
+                is_llm=False,
+            )
+            active_tracer.trace_citation_validation(
+                sources=placement_ans.get("sources", []),
+                evidence=placement_ans.get("evidence", []),
+                is_valid=True,
+            )
+            if owns_pipeline:
+                active_tracer.end_pipeline(
+                    answer=placement_ans.get("answer", ""),
+                    is_abstention=False,
+                    sources_count=len(placement_ans.get("sources", [])),
+                )
+        return placement_ans
+
     effective_threshold = score_threshold
     q_lower = effective_question.lower()
     retrieval_query = effective_question
+    needs_wider_pool = False
 
     if temporal_info["has_temporal_intent"]:
         effective_threshold = min(score_threshold, 0.02)
@@ -1445,7 +1548,41 @@ def answer_question(
     entities = intent_info.get("entities") or {}
     quota = entities.get("admission_quota")
 
-    if quota in {"kea_cet", "comedk", "management", "pgcet", "multiple"}:
+    # Dynamic retrieval policy based on intent and extracted entities (PART H)
+    is_cutoff = (
+        intent_info.get("normalized_intent") == "admissions_cutoff"
+        or entities.get("data_type") in {"cutoff", "previous_cutoff"}
+        or any(k in q_lower for k in ["cutoff", "closing rank", "cut off", "closing"])
+    )
+    is_fee = (
+        intent_info.get("normalized_intent") in {"admission_fee", "admission_fees", "hostel_fee", "fee_penalty", "general_fee"}
+        or entities.get("data_type") == "fee_structure"
+        or quota in {"kea_cet", "comedk", "management", "pgcet"}
+    )
+    is_procedure = (
+        intent_info.get("normalized_intent") == "admissions_procedure"
+        or entities.get("data_type") == "procedure"
+        or any(k in q_lower for k in ["procedure", "process", "steps", "documents required", "verification"])
+    )
+
+    if is_cutoff:
+        effective_threshold = min(effective_threshold, 0.02)
+        needs_wider_pool = True
+        candidate_top_k = max(top_k, 15)
+        if retrieval_expansion:
+            retrieval_query = f"{effective_question} {retrieval_expansion}"
+    elif is_fee:
+        effective_threshold = min(effective_threshold, 0.02)
+        needs_wider_pool = True
+        candidate_top_k = max(top_k, 12)
+        if retrieval_expansion:
+            retrieval_query = f"{effective_question} {retrieval_expansion}"
+    elif is_procedure:
+        effective_threshold = min(effective_threshold, 0.03)
+        candidate_top_k = max(top_k, 12)
+        if retrieval_expansion:
+            retrieval_query = f"{effective_question} {retrieval_expansion}"
+    elif quota in {"kea_cet", "comedk", "management", "pgcet", "multiple"}:
         effective_threshold = min(effective_threshold, 0.02)
         if retrieval_expansion:
             retrieval_query = f"{effective_question} {retrieval_expansion}"
@@ -1473,7 +1610,8 @@ def answer_question(
         retrieval_query = f"{effective_question} SEE answer paper viewing PVP fast track examination circular"
 
     needs_wider_pool = (
-        temporal_info["has_temporal_intent"]
+        needs_wider_pool
+        or temporal_info["has_temporal_intent"]
         or bool(conversation_history)
         or any(k in q_lower for k in ["pgcet", "m.tech", "mtech", "mca", "hostel", "placement", "internship"])
     )
@@ -1499,6 +1637,8 @@ def answer_question(
     if strategy == "gpt":
         from src.generation import generate_answer  # noqa: PLC0415
         from src.retrieval import enrich_with_companion_chunks  # noqa: PLC0415
+        from src.multi_query import generate_expanded_queries, retrieve_multi_query_hybrid
+        from src.context_aggregation import assemble_hierarchical_context
 
         if retriever is not None:
             active_retriever = retriever
@@ -1506,7 +1646,29 @@ def answer_question(
             active_retriever = get_default_retriever(dataset_path)
 
         gpt_top_k = max(candidate_top_k, 6)
-        if hasattr(active_retriever, "retrieve"):
+        expanded_queries = generate_expanded_queries(
+            effective_question,
+            entities=entities,
+            intent=intent_info.get("normalized_intent"),
+            max_queries=3,
+        )
+        if active_tracer:
+            active_tracer.trace_query_expansion(
+                original_query=effective_question,
+                expanded_queries=expanded_queries,
+                strategy="gpt",
+            )
+
+        t_ret_start = time.time()
+        if len(expanded_queries) > 1 and hasattr(active_retriever, "retrieve"):
+            results = retrieve_multi_query_hybrid(
+                retriever=active_retriever,
+                queries=expanded_queries,
+                top_k_per_query=gpt_top_k,
+                score_threshold=effective_threshold,
+                strategy="hybrid" if hasattr(active_retriever, "semantic_retriever") else "tfidf",
+            )
+        elif hasattr(active_retriever, "retrieve"):
             results = active_retriever.retrieve(
                 query=retrieval_query,
                 top_k=gpt_top_k,
@@ -1514,6 +1676,7 @@ def answer_question(
             )
         else:
             results = []
+        ret_latency = (time.time() - t_ret_start) * 1000.0
 
         if gmail_mcp_results:
             seen_ids = {r.get("chunk_id") for r in results if r.get("chunk_id")}
@@ -1529,6 +1692,26 @@ def answer_question(
                 if item.get("chunk_id") not in seen_ids:
                     results.append(item)
                     seen_ids.add(item.get("chunk_id"))
+
+        if (
+            intent_info.get("normalized_intent") == "placements_careers"
+            or (intent_info.get("entities") or {}).get("main_entity") == "placement"
+            or any(k in q_lower for k in ["placement", "recruiter", "package", "internship", "salary", "ppo"])
+        ):
+            p_extra = search_placement_records(effective_question, top_k=gpt_top_k)
+            seen_ids = {r.get("chunk_id") for r in results if r.get("chunk_id")}
+            for item in p_extra:
+                if item.get("chunk_id") not in seen_ids:
+                    results.append(item)
+                    seen_ids.add(item.get("chunk_id"))
+
+        if active_tracer:
+            active_tracer.trace_retrieval(
+                retrieval_query=retrieval_query,
+                retrieved_chunks=results,
+                retriever_type="multi_query_hybrid",
+                latency_ms=ret_latency,
+            )
 
         if results:
             results = enrich_with_companion_chunks(results, retriever=active_retriever, max_companions=2)
@@ -1554,11 +1737,18 @@ def answer_question(
                     )
                     if not usable_for_gpt and temporal_info.get("intent") == "date_range":
                         period_label = temporal_info.get("period_label") or "the requested time period"
+                        empty_ans = (
+                            f"I could not find any relevant campus notices or documents from "
+                            f"{period_label} in the available records."
+                        )
+                        if active_tracer:
+                            active_tracer.trace_context_assembly(usable_chunks=[], context_length_chars=0)
+                            active_tracer.trace_generation(model_name="extractive_synthesis", answer=empty_ans, is_llm=False)
+                            active_tracer.trace_citation_validation(sources=[], evidence=[], is_valid=True)
+                            if owns_pipeline:
+                                active_tracer.end_pipeline(answer=empty_ans, is_abstention=True, sources_count=0)
                         return {
-                            "answer": (
-                                f"I could not find any relevant campus notices or documents from "
-                                f"{period_label} in the available records."
-                            ),
+                            "answer": empty_ans,
                             "evidence": [],
                             "sources": [],
                             "strategy": "gpt",
@@ -1581,24 +1771,54 @@ def answer_question(
 
         if not usable_for_gpt and temporal_info.get("intent") == "date_range":
             period_label = temporal_info.get("period_label") or "the requested time period"
+            empty_ans = (
+                f"I could not find any relevant campus notices or documents from "
+                f"{period_label} in the available records."
+            )
+            if active_tracer:
+                active_tracer.trace_context_assembly(usable_chunks=[], context_length_chars=0)
+                active_tracer.trace_generation(model_name="extractive_synthesis", answer=empty_ans, is_llm=False)
+                active_tracer.trace_citation_validation(sources=[], evidence=[], is_valid=True)
+                if owns_pipeline:
+                    active_tracer.end_pipeline(answer=empty_ans, is_abstention=True, sources_count=0)
             return {
-                "answer": (
-                    f"I could not find any relevant campus notices or documents from "
-                    f"{period_label} in the available records."
-                ),
+                "answer": empty_ans,
                 "evidence": [],
                 "sources": [],
                 "strategy": "gpt",
                 "intent": intent_info,
             }
 
+        if active_tracer:
+            active_tracer.trace_context_assembly(
+                usable_chunks=usable_for_gpt,
+                context_length_chars=sum(len(r.get("text", "") or "") for r in usable_for_gpt),
+            )
+
+        t_gen_start = time.time()
         gpt_result = generate_answer(
             raw_question,
             usable_for_gpt,
             conversation_history=conversation_history,
         )
+        gen_latency = (time.time() - t_gen_start) * 1000.0
         gpt_result.setdefault("strategy", "gpt")
         gpt_result["intent"] = intent_info
+
+        if active_tracer:
+            active_tracer.trace_generation(
+                model_name="openai-gpt",
+                answer=gpt_result.get("answer") or "",
+                latency_ms=gen_latency,
+                error=gpt_result.get("error"),
+                token_usage=gpt_result.get("token_usage"),
+                is_llm=True,
+            )
+            active_tracer.trace_citation_validation(
+                sources=gpt_result.get("sources") or [],
+                evidence=gpt_result.get("evidence") or [],
+                is_valid=bool(gpt_result.get("sources")),
+            )
 
         # If LLM generation encountered an API error (quota exhausted, rate limited) or produced a blank/error message,
         # fall back to evidence synthesis while preserving error diagnostics
@@ -1613,8 +1833,22 @@ def answer_question(
             fallback_resp["intent"] = intent_info
             fallback_resp["strategy"] = "gpt"
             fallback_resp["error"] = gpt_result.get("error")
+            if active_tracer and owns_pipeline:
+                active_tracer.end_pipeline(
+                    answer=fallback_resp.get("answer") or "",
+                    is_abstention=(fallback_resp.get("answer") == NO_EVIDENCE_MESSAGE),
+                    sources_count=len(fallback_resp.get("sources") or []),
+                    error=fallback_resp.get("error"),
+                )
             return fallback_resp
 
+        if active_tracer and owns_pipeline:
+            active_tracer.end_pipeline(
+                answer=gpt_result.get("answer") or "",
+                is_abstention=(gpt_result.get("answer") == NO_EVIDENCE_MESSAGE),
+                sources_count=len(gpt_result.get("sources") or []),
+                error=gpt_result.get("error"),
+            )
         return gpt_result
 
     if retriever is not None:
@@ -1630,9 +1864,34 @@ def answer_question(
     else:
         active_retriever = get_default_retriever(dataset_path)
 
+    from src.multi_query import generate_expanded_queries, retrieve_multi_query_hybrid
+
+    effective_rerank = rerank or (strategy == "hybrid_rerank")
+    expanded_queries = generate_expanded_queries(
+        effective_question,
+        entities=entities,
+        intent=intent_info.get("normalized_intent"),
+        max_queries=3,
+    )
+    if active_tracer:
+        active_tracer.trace_query_expansion(
+            original_query=effective_question,
+            expanded_queries=expanded_queries,
+            strategy=strategy,
+        )
+
+    t_ret_start = time.time()
     if hasattr(active_retriever, "retrieve"):
-        if hasattr(active_retriever, "tfidf_retriever") and hasattr(active_retriever, "semantic_retriever"):
-            effective_rerank = rerank or (strategy == "hybrid_rerank")
+        if len(expanded_queries) > 1:
+            results = retrieve_multi_query_hybrid(
+                retriever=active_retriever,
+                queries=expanded_queries,
+                top_k_per_query=candidate_top_k,
+                score_threshold=effective_threshold,
+                strategy=strategy,
+                rerank=effective_rerank,
+            )
+        elif hasattr(active_retriever, "tfidf_retriever") and hasattr(active_retriever, "semantic_retriever"):
             results = active_retriever.retrieve(
                 query=retrieval_query,
                 top_k=candidate_top_k,
@@ -1648,6 +1907,7 @@ def answer_question(
             )
     else:
         results = []
+    ret_latency = (time.time() - t_ret_start) * 1000.0
 
     if gmail_mcp_results:
         seen_ids = {r.get("chunk_id") for r in results if r.get("chunk_id")}
@@ -1664,11 +1924,43 @@ def answer_question(
                 results.append(item)
                 seen_ids.add(item.get("chunk_id"))
 
+    if (
+        intent_info.get("normalized_intent") == "placements_careers"
+        or (intent_info.get("entities") or {}).get("main_entity") == "placement"
+        or any(k in q_lower for k in ["placement", "recruiter", "package", "internship", "salary", "ppo"])
+    ):
+        p_extra = search_placement_records(effective_question, top_k=candidate_top_k)
+        seen_ids = {r.get("chunk_id") for r in results if r.get("chunk_id")}
+        for item in p_extra:
+            if item.get("chunk_id") not in seen_ids:
+                results.append(item)
+                seen_ids.add(item.get("chunk_id"))
+
+    if active_tracer:
+        active_tracer.trace_retrieval(
+            retrieval_query=retrieval_query,
+            retrieved_chunks=results,
+            retriever_type=strategy,
+            latency_ms=ret_latency,
+        )
+        if effective_rerank:
+            active_tracer.trace_reranking(
+                candidates_in=results,
+                candidates_out=results,
+                latency_ms=ret_latency,
+            )
+
     if results:
         from src.retrieval import enrich_with_companion_chunks
 
         results = enrich_with_companion_chunks(results, retriever=active_retriever, max_companions=2)
         results = _apply_intent_boost(results, intent_info)
+
+    if active_tracer:
+        active_tracer.trace_context_assembly(
+            usable_chunks=results,
+            context_length_chars=sum(len(r.get("text", "") or "") for r in results),
+        )
 
     final_resp = build_evidence_answer(
         results,
@@ -1681,6 +1973,24 @@ def answer_question(
     if rerank and "rerank" not in strategy:
         effective_strategy = f"{strategy}+rerank"
     final_resp["strategy"] = effective_strategy
+
+    if active_tracer:
+        active_tracer.trace_generation(
+            model_name="extractive_synthesis",
+            answer=final_resp.get("answer") or "",
+            is_llm=False,
+        )
+        active_tracer.trace_citation_validation(
+            sources=final_resp.get("sources") or [],
+            evidence=final_resp.get("evidence") or [],
+            is_valid=bool(final_resp.get("sources")),
+        )
+        if owns_pipeline:
+            active_tracer.end_pipeline(
+                answer=final_resp.get("answer") or "",
+                is_abstention=(final_resp.get("answer") == NO_EVIDENCE_MESSAGE),
+                sources_count=len(final_resp.get("sources") or []),
+            )
     return final_resp
 
 

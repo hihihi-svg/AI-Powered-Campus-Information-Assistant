@@ -30,3 +30,7 @@ google-auth-oauthlib>=1.2.0
 openai>=1.0.0
 python-dotenv>=1.0.0
 
+# LangSmith RAG Observability & Tracing (optional)
+langsmith>=0.1.0
+
+

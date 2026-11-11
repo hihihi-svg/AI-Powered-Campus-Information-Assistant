@@ -1,0 +1,83 @@
+schema: '2.0'
+stages:
+  normalize_placements:
+    cmd: python -m src.scrapers.rvce_placements_scraper --use-cache --raw-path 
+      data/raw/rvce_placements_2027.json --processed-path 
+      data/processed/rvce_placements_2027.jsonl
+    deps:
+    - path: data/raw/rvce_placements_2027.json
+      hash: md5
+      md5: 52fec32b5410ef0d62a421a2540e8f91
+      size: 201700
+    - path: src/scrapers/rvce_placements_scraper.py
+      hash: md5
+      md5: cb1b2ff83b124be508f3452ebc5b3c31
+      size: 16299
+    outs:
+    - path: data/processed/rvce_placements_2027.jsonl
+      hash: md5
+      md5: cb4b5f2e73007713264a5a3ed9e71fbd
+      size: 321668
+  generate_embeddings:
+    cmd: python -c "from src.retrieval import SemanticRetriever; r = 
+      SemanticRetriever(); 
+      r.load_and_index('data/processed/campus_documents.jsonl'); 
+      r.encode_corpus(cache_path='data/processed/corpus_semantic_embeddings.npy')"
+    deps:
+    - path: data/processed/campus_documents.jsonl
+      hash: md5
+      md5: badee2d967dd094fa1ee5fc87583e8a5
+      size: 432778
+    - path: src/retrieval.py
+      hash: md5
+      md5: e1c4a2be995e91cf19de2fc21f126398
+      size: 59191
+    outs:
+    - path: data/processed/corpus_semantic_embeddings.npy
+      hash: md5
+      md5: d036a2a6fa740a81da2ade41f21683e4
+      size: 699008
+  train_intent_classifier:
+    cmd: python -m src.intent_classification --dataset 
+      data/queries/campus_queries_v2.csv --report-path 
+      reports/intent_classification_v2_evaluation.json
+    deps:
+    - path: data/queries/campus_queries_v2.csv
+      hash: md5
+      md5: 94ce3a17ca6de2aa3074db6941d14d79
+      size: 9316
+    - path: src/intent_classification.py
+      hash: md5
+      md5: 5364635042b6675908800459d2e15f71
+      size: 44992
+    outs:
+    - path: reports/intent_classification_v2_evaluation.json
+      hash: md5
+      md5: 8ef7fd932c6bab3a8b0d1a6d371262da
+      size: 12724
+  evaluate_retrieval:
+    cmd: python -m src.evaluation --retriever hybrid --benchmark 
+      data/queries/campus_queries.csv --dataset 
+      data/processed/campus_documents.jsonl
+    deps:
+    - path: data/processed/campus_documents.jsonl
+      hash: md5
+      md5: badee2d967dd094fa1ee5fc87583e8a5
+      size: 432778
+    - path: data/queries/campus_queries.csv
+      hash: md5
+      md5: e463b36162d2990687f083a940ca9467
+      size: 3826
+    - path: src/evaluation.py
+      hash: md5
+      md5: 1507c4fa5e10ee752a8e0287d4497788
+      size: 56609
+    - path: src/retrieval.py
+      hash: md5
+      md5: e1c4a2be995e91cf19de2fc21f126398
+      size: 59191
+    outs:
+    - path: reports/mlflow_hybrid_evaluation_summary.json
+      hash: md5
+      md5: 6beecf88d2e525bdfa5d68a6f4bd0eac
+      size: 20213

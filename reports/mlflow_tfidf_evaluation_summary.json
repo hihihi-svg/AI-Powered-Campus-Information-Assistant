@@ -28,7 +28,8 @@
     "average_retrieved_results": 2.0,
     "benchmark_has_relevance_labels": false,
     "benchmark_note": "The benchmark CSV has query text and intent labels only; no gold relevance labels are available. The 'retrieval_coverage' below is a retrieval-hit proxy based on whether at least one returned passage passed the configured score threshold.",
-    "evaluation_duration_seconds": 0.0239
+    "evaluation_duration_seconds": 0.0094,
+    "average_retrieval_latency": 0.0043
   },
   "queries": [
     {
@@ -38,7 +39,8 @@
       "query_text": "What is the procedure for B.E. admission through COMEDK quota?",
       "result_count": 2,
       "has_result": true,
-      "max_score": 0.1954,
+      "max_score": 0.1955,
+      "retrieval_latency_seconds": 0.005,
       "top_result_title": "Comedk Quota Admission Process Fees Details For 1St Year B.E 2026 27 1",
       "top_result_url": "https://rvce.edu.in/wp-content/uploads/2026/07/3-COMEDK-QUOTA-ADMISSION-PROCESS-FEES-DETAILS-FOR-1ST-YEAR-B.E-2026-27-1.pdf"
     },
@@ -50,6 +52,7 @@
       "result_count": 2,
       "has_result": true,
       "max_score": 0.1327,
+      "retrieval_latency_seconds": 0.0037,
       "top_result_title": "Dcet Admission Process Fees Details For 2Nd Year B.E 2026 27",
       "top_result_url": "https://rvce.edu.in/wp-content/uploads/2026/08/6-DCET-ADMISSION-PROCESS-FEES-DETAILS-FOR-2ND-YEAR-B.E-2026-27.pdf"
     }

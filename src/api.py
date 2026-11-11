@@ -17,6 +17,7 @@ from src.answering import NO_EVIDENCE_MESSAGE, answer_question
 from src.generation import CLEAN_GENERATION_ERROR_MESSAGE
 from src.gmail_ingestion import GmailSyncWorker
 from src.mcp_server import CampusGmailMCPClient, CampusGmailMCPServer
+from src.tracing import RAGTracer, is_tracing_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -117,12 +118,23 @@ def ask_question(payload: QuestionRequest) -> Dict[str, Any]:
 
     strategy = payload.strategy or "hybrid"
     rerank = payload.rerank or False
+
+    tracer = RAGTracer() if is_tracing_enabled() else None
+    if tracer:
+        tracer.start_pipeline(
+            question=question,
+            strategy=strategy,
+            rerank=rerank,
+            conversation_history=payload.conversation_history,
+        )
+
     try:
         result = answer_question(
             question,
             strategy=strategy,
             rerank=rerank,
             conversation_history=payload.conversation_history,
+            tracer=tracer,
         )
     except Exception as exc:  # pylint: disable=broad-except
         logger.exception("Unhandled error in ask_question")
@@ -149,6 +161,14 @@ def ask_question(payload: QuestionRequest) -> Dict[str, Any]:
     effective_strategy = result.get("strategy") or strategy
     if rerank and "rerank" not in effective_strategy:
         effective_strategy = f"{effective_strategy}+rerank"
+
+    if tracer:
+        tracer.end_pipeline(
+            answer=answer,
+            is_abstention=(answer == NO_EVIDENCE_MESSAGE),
+            sources_count=len(sources),
+            error=error,
+        )
 
     return {
         "answer": answer,

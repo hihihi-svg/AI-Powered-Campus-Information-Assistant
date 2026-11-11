@@ -1,0 +1,258 @@
+[
+  {
+    "query_id": "Q001",
+    "query_text": "What is the procedure for B.E. admission through COMEDK quota?",
+    "intent": "admissions",
+    "score": 0.0978,
+    "result_count": 3,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q002",
+    "query_text": "Can diploma students apply for lateral entry into 2nd year engineering?",
+    "intent": "admissions",
+    "score": 0.0664,
+    "result_count": 3,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q003",
+    "query_text": "how to get seat under management quota in rvce?",
+    "intent": "admissions",
+    "score": 0.0885,
+    "result_count": 3,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q004",
+    "query_text": "Documents required for M.Tech PGCET document verification",
+    "intent": "admissions",
+    "score": 0.0634,
+    "result_count": 2,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q005",
+    "query_text": "cutoff rank for cse branch in kcet round 2",
+    "intent": "admissions",
+    "score": 0.0,
+    "result_count": 0,
+    "diagnostic_reason": "zero_results_above_threshold"
+  },
+  {
+    "query_id": "Q006",
+    "query_text": "What is the deadline for paying higher semester tuition fees?",
+    "intent": "fees_finance",
+    "score": 0.0637,
+    "result_count": 3,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q007",
+    "query_text": "Is there any fine if fee payment is delayed by a week?",
+    "intent": "fees_finance",
+    "score": 0.0608,
+    "result_count": 2,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q008",
+    "query_text": "how do I apply for post-matric state scholarship on SSP portal?",
+    "intent": "fees_finance",
+    "score": 0.0706,
+    "result_count": 2,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q009",
+    "query_text": "Can I pay the college fee in two installments?",
+    "intent": "fees_finance",
+    "score": 0.072,
+    "result_count": 3,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q010",
+    "query_text": "where to submit the fee challan receipt after online payment",
+    "intent": "fees_finance",
+    "score": 0.0824,
+    "result_count": 3,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q012",
+    "query_text": "What is the minimum attendance percentage required to be eligible for fast-track examinations?",
+    "intent": "academics_exams",
+    "score": 0.0593,
+    "result_count": 1,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q013",
+    "query_text": "procedure to apply for grade card revaluation and photocopy",
+    "intent": "academics_exams",
+    "score": 0.0548,
+    "result_count": 2,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q014",
+    "query_text": "how many credits needed to register for 5th semester?",
+    "intent": "academics_exams",
+    "score": 0.0,
+    "result_count": 0,
+    "diagnostic_reason": "zero_results_above_threshold"
+  },
+  {
+    "query_id": "Q016",
+    "query_text": "Who is the current Head of Department for Computer Science and Engineering?",
+    "intent": "departments_faculty",
+    "score": 0.0901,
+    "result_count": 3,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q017",
+    "query_text": "Where is the cabin of the Aerospace Engineering department coordinator?",
+    "intent": "departments_faculty",
+    "score": 0.0969,
+    "result_count": 3,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q019",
+    "query_text": "how to contact civil engineering department office?",
+    "intent": "departments_faculty",
+    "score": 0.0829,
+    "result_count": 3,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q021",
+    "query_text": "What was the average package and highest salary offered in 2025-26 campus placements?",
+    "intent": "placements_careers",
+    "score": 0.0655,
+    "result_count": 3,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q022",
+    "query_text": "Which top companies visit the campus for 6-month internships?",
+    "intent": "placements_careers",
+    "score": 0.0731,
+    "result_count": 2,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q023",
+    "query_text": "eligibility criteria for tier 1 software companies visiting for placements",
+    "intent": "placements_careers",
+    "score": 0.0868,
+    "result_count": 2,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q025",
+    "query_text": "Can students with an active backlog sit for mass recruiter drives?",
+    "intent": "placements_careers",
+    "score": 0.0,
+    "result_count": 0,
+    "diagnostic_reason": "zero_results_above_threshold"
+  },
+  {
+    "query_id": "Q026",
+    "query_text": "How do I apply for on-campus boys hostel accommodation?",
+    "intent": "facilities_hostels",
+    "score": 0.0609,
+    "result_count": 3,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q027",
+    "query_text": "What are the central library working hours during exam week?",
+    "intent": "facilities_hostels",
+    "score": 0.0,
+    "result_count": 0,
+    "diagnostic_reason": "zero_results_above_threshold"
+  },
+  {
+    "query_id": "Q028",
+    "query_text": "hostel in-time rules and night curfew for first years",
+    "intent": "facilities_hostels",
+    "score": 0.0598,
+    "result_count": 1,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q029",
+    "query_text": "Does the campus have badminton and gym facilities for students?",
+    "intent": "facilities_hostels",
+    "score": 0.082,
+    "result_count": 3,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q030",
+    "query_text": "is mess food fee included in hostel charges or paid separately?",
+    "intent": "facilities_hostels",
+    "score": 0.0,
+    "result_count": 0,
+    "diagnostic_reason": "zero_results_above_threshold"
+  },
+  {
+    "query_id": "Q032",
+    "query_text": "Where do I submit the application to get a bonafide student certificate?",
+    "intent": "student_services_clubs",
+    "score": 0.0,
+    "result_count": 0,
+    "diagnostic_reason": "zero_results_above_threshold"
+  },
+  {
+    "query_id": "Q033",
+    "query_text": "nss and ncc enrollment process for freshers",
+    "intent": "student_services_clubs",
+    "score": 0.0805,
+    "result_count": 1,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q035",
+    "query_text": "who to contact for organizing an inter-college cultural fest event?",
+    "intent": "student_services_clubs",
+    "score": 0.0,
+    "result_count": 0,
+    "diagnostic_reason": "zero_results_above_threshold"
+  },
+  {
+    "query_id": "Q036",
+    "query_text": "What is the official contact email and reception phone number for RVCE?",
+    "intent": "general_college_info",
+    "score": 0.0,
+    "result_count": 0,
+    "diagnostic_reason": "zero_results_above_threshold"
+  },
+  {
+    "query_id": "Q037",
+    "query_text": "Is RV College of Engineering affiliated with VTU or a deemed university?",
+    "intent": "general_college_info",
+    "score": 0.0813,
+    "result_count": 2,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q038",
+    "query_text": "college address and nearest metro station to reach campus",
+    "intent": "general_college_info",
+    "score": 0.0554,
+    "result_count": 3,
+    "diagnostic_reason": "low_confidence_match"
+  },
+  {
+    "query_id": "Q040",
+    "query_text": "who is the current principal of the college?",
+    "intent": "general_college_info",
+    "score": 0.0759,
+    "result_count": 3,
+    "diagnostic_reason": "low_confidence_match"
+  }
+]

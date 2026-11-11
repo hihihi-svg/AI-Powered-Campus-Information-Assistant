@@ -1,0 +1,5 @@
+outs:
+- md5: 52fec32b5410ef0d62a421a2540e8f91
+  size: 201700
+  hash: md5
+  path: rvce_placements_2027.json

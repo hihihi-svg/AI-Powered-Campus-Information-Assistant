@@ -1,0 +1,27 @@
+{
+  "config": {
+    "rag_strategy": "hybrid",
+    "retriever_type": "hybrid",
+    "rerank": false,
+    "grounding_policy": "evidence_required",
+    "top_k": 3,
+    "score_threshold": 0.05,
+    "dataset_path": "data\\processed\\campus_documents.jsonl",
+    "dataset_checksum": "f61c42654429",
+    "total_queries": 13,
+    "in_domain_queries_count": 9,
+    "out_of_domain_queries_count": 4,
+    "dvc_tracked": "true"
+  },
+  "metrics": {
+    "factual_accuracy": 1.0,
+    "abstention_accuracy": 1.0,
+    "overall_accuracy": 1.0,
+    "evidence_grounding_rate": 1.0,
+    "average_answer_latency": 2.2458,
+    "total_queries_evaluated": 13,
+    "answered_queries_count": 9,
+    "abstained_queries_count": 4,
+    "evaluation_duration_seconds": 29.1953
+  }
+}

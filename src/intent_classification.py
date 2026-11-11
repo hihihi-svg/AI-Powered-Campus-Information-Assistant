@@ -31,11 +31,15 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score, precision_score, recall_score
 from sklearn.pipeline import Pipeline
 
+from src.entity_extraction import extract_campus_entities
+
 logger = logging.getLogger("campus_pipeline.intent_classification")
 
 DEFAULT_DATASET_PATH = Path("data/queries/campus_queries.csv")
-DEFAULT_EXPERIMENT_NAME = "rvce-campus-intent-classification"
+DEFAULT_DATASET_V2_PATH = Path("data/queries/campus_queries_v2.csv")
+DEFAULT_EXPERIMENT_NAME = "campus-intent-classification"
 DEFAULT_REPORT_PATH = Path("reports/intent_classification_evaluation.json")
+DEFAULT_REPORT_V2_PATH = Path("reports/intent_classification_v2_evaluation.json")
 
 EVALUATION_LIMITATION_NOTE = (
     "Preliminary Evaluation Warning: Evaluation was conducted on a test set of exactly 8 samples "
@@ -236,12 +240,19 @@ def log_intent_experiment_to_mlflow(
 
     with mlflow.start_run(run_name=run_label) as run:
         # 1. Parameters
+        is_pipeline = hasattr(model, "named_steps") or "logistic" in model_name.lower()
+        algorithm_name = "LogisticRegression" if is_pipeline else model.__class__.__name__
+
         mlflow.log_param("model_type", model_name)
+        mlflow.log_param("model_algorithm", algorithm_name)
         mlflow.log_param("dataset_path", str(dataset_path))
         mlflow.log_param("dataset_checksum_sha256", _get_file_checksum(dataset_path))
         mlflow.log_param("train_samples", train_count)
         mlflow.log_param("test_samples", test_count)
+        total_samples = train_count + test_count
+        mlflow.log_param("train_test_split_ratio", round(test_count / total_samples, 4) if total_samples else 0.0)
         mlflow.log_param("class_count", len(eval_results["class_labels"]))
+        mlflow.log_param("dvc_tracked", "true")
         mlflow.log_param("python_version", sys.version.split()[0])
         import sklearn
         mlflow.log_param("sklearn_version", sklearn.__version__)
@@ -250,40 +261,139 @@ def log_intent_experiment_to_mlflow(
             mlflow.log_param("git_commit", git_commit)
 
         # Log hyperparameters
+        training_config: Dict[str, Any] = {
+            "model_name": model_name,
+            "model_algorithm": algorithm_name,
+            "dataset_path": str(dataset_path),
+            "dataset_checksum_sha256": _get_file_checksum(dataset_path),
+            "train_samples": train_count,
+            "test_samples": test_count,
+            "class_labels": eval_results["class_labels"],
+            "random_seed": 42,
+        }
+
         if hasattr(model, "get_params"):
             params = model.get_params()
+            training_config["hyperparameters"] = {}
             for p_key in [
                 "classifier__C",
                 "classifier__max_iter",
                 "classifier__random_state",
                 "classifier__class_weight",
+                "classifier__solver",
                 "tfidf__ngram_range",
                 "tfidf__sublinear_tf",
+                "tfidf__norm",
+                "tfidf__max_features",
                 "strategy",
             ]:
                 if p_key in params:
-                    mlflow.log_param(p_key.replace("__", "_"), str(params[p_key]))
+                    clean_key = p_key.replace("__", "_")
+                    val = params[p_key]
+                    mlflow.log_param(clean_key, str(val))
+                    training_config["hyperparameters"][clean_key] = val
+
+            if "classifier__random_state" in params:
+                mlflow.log_param("random_seed", int(params["classifier__random_state"] or 42))
+            elif "random_state" in params:
+                mlflow.log_param("random_seed", int(params["random_state"] or 42))
+            else:
+                mlflow.log_param("random_seed", 42)
 
         # 2. Scalar Metrics
-        mlflow.log_metric("accuracy", eval_results["accuracy"])
-        mlflow.log_metric("macro_f1", eval_results["macro_f1"])
-        mlflow.log_metric("weighted_f1", eval_results["weighted_f1"])
-        mlflow.log_metric("macro_precision", eval_results["macro_precision"])
-        mlflow.log_metric("macro_recall", eval_results["macro_recall"])
+        acc = float(eval_results["accuracy"])
+        macro_prec = float(eval_results["macro_precision"])
+        macro_rec = float(eval_results["macro_recall"])
+        macro_f1_val = float(eval_results["macro_f1"])
+        weighted_f1_val = float(eval_results["weighted_f1"])
+
+        mlflow.log_metric("accuracy", acc)
+        mlflow.log_metric("macro_precision", macro_prec)
+        mlflow.log_metric("macro_recall", macro_rec)
+        mlflow.log_metric("macro_f1", macro_f1_val)
+        mlflow.log_metric("weighted_f1", weighted_f1_val)
+
+        correct_count = sum(1 for p in eval_results["predictions"] if p.get("correct"))
+        incorrect_count = len(eval_results["predictions"]) - correct_count
+        mlflow.log_metric("correct_predictions", correct_count)
+        mlflow.log_metric("incorrect_predictions", incorrect_count)
 
         # Per-class metrics
         for c_label, c_m in eval_results["per_class_metrics"].items():
-            mlflow.log_metric(f"f1_{c_label}", c_m["f1_score"])
+            mlflow.log_metric(f"precision_{c_label}", float(c_m["precision"]))
+            mlflow.log_metric(f"recall_{c_label}", float(c_m["recall"]))
+            mlflow.log_metric(f"f1_{c_label}", float(c_m["f1_score"]))
 
         # 3. Tags
-        mlflow.set_tag("evaluation_stage", "baseline_verification")
-        mlflow.set_tag("dataset_warning", "8-sample test split preliminary evaluation")
+        mlflow.set_tag("evaluation_stage", "v2_production_intent" if "v2" in str(dataset_path) else "baseline_verification")
+        mlflow.set_tag("model_algorithm", algorithm_name)
 
-        # 4. Model Artifact (for primary pipeline)
+        # 4. Save and Log Rich Artifacts
+        artifacts_dir = Path("reports") / "mlflow_temp" / run.info.run_id
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+        # a. Classification report JSON & TXT
+        class_rep_json_path = artifacts_dir / "classification_report.json"
+        class_rep_json_path.write_text(
+            json.dumps(eval_results["per_class_metrics"], indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        mlflow.log_artifact(str(class_rep_json_path), artifact_path="evaluation")
+
+        class_rep_txt_path = artifacts_dir / "classification_report.txt"
+        lines = [
+            f"{'Class Label':<28} | {'Precision':<10} | {'Recall':<10} | {'F1-Score':<10} | {'Support':<8}",
+            "-" * 75,
+        ]
+        for c_lbl, c_m in eval_results["per_class_metrics"].items():
+            lines.append(
+                f"{c_lbl:<28} | {c_m['precision']:<10.4f} | {c_m['recall']:<10.4f} | {c_m['f1_score']:<10.4f} | {c_m['support']:<8}"
+            )
+        lines.append("-" * 75)
+        lines.append(
+            f"{'Macro Average':<28} | {macro_prec:<10.4f} | {macro_rec:<10.4f} | {macro_f1_val:<10.4f} | {test_count:<8}"
+        )
+        lines.append(
+            f"{'Weighted Average':<28} | {'-':<10} | {'-':<10} | {weighted_f1_val:<10.4f} | {test_count:<8}"
+        )
+        lines.append(f"{'Overall Accuracy':<28} | {acc:<10.4f} | {'-':<10} | {'-':<10} | {test_count:<8}")
+        class_rep_txt_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        mlflow.log_artifact(str(class_rep_txt_path), artifact_path="evaluation")
+
+        # b. Confusion Matrix JSON & TXT
+        conf_mat_json_path = artifacts_dir / "confusion_matrix.json"
+        conf_mat_json_path.write_text(
+            json.dumps({
+                "labels": eval_results["class_labels"],
+                "matrix": eval_results["confusion_matrix"],
+            }, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        mlflow.log_artifact(str(conf_mat_json_path), artifact_path="evaluation")
+
+        conf_mat_txt_path = artifacts_dir / "confusion_matrix.txt"
+        cm_labels = eval_results["class_labels"]
+        cm_matrix = eval_results["confusion_matrix"]
+        header_labels = [lbl[:6] for lbl in cm_labels]
+        cm_title = "True \\ Pred"
+        cm_lines = [f"{cm_title:<24} | " + " | ".join(f"{hl:>6}" for hl in header_labels)]
+        cm_lines.append("-" * (27 + 9 * len(cm_labels)))
+        for i, row_label in enumerate(cm_labels):
+            row_str = " | ".join(f"{cm_matrix[i][j]:>6}" for j in range(len(cm_labels)))
+            cm_lines.append(f"{row_label:<24} | {row_str}")
+        conf_mat_txt_path.write_text("\n".join(cm_lines) + "\n", encoding="utf-8")
+        mlflow.log_artifact(str(conf_mat_txt_path), artifact_path="evaluation")
+
+        # c. Training configuration
+        config_path = artifacts_dir / "training_config.json"
+        config_path.write_text(json.dumps(training_config, indent=2, ensure_ascii=False), encoding="utf-8")
+        mlflow.log_artifact(str(config_path), artifact_path="evaluation")
+
+        # 5. Model Artifact (for primary pipeline)
         model_uri = None
         reload_verified = False
         if log_model_artifact:
-            model_info = mlflow.sklearn.log_model(model, name="model")
+            model_info = mlflow.sklearn.log_model(model, name="model", pip_requirements=["scikit-learn", "numpy"])
             model_uri = model_info.model_uri
 
             # Verify reload
@@ -405,62 +515,187 @@ def train_and_evaluate_all(
 
 
 INTENT_DISPLAY_LABELS: Dict[str, str] = {
+    # 9 target classes
+    "admissions_cutoff": "Admissions Cutoffs & Ranks",
+    "admission_fees": "Admission Fees & Fee Structure",
+    "admissions_procedure": "Admissions Procedure & Quotas",
+    "placements": "Placements & Careers",
+    "academics_exams": "Academics & Examinations",
+    "departments_faculty": "Departments & Faculty",
+    "facilities_hostels": "Facilities & Hostels",
+    "student_services": "Student Services & Activities",
+    "general_college_info": "General College Information",
+    # Legacy aliases
     "admission_fee": "Admission Fees",
     "hostel_fee": "Hostel Fees",
     "fee_penalty": "Late Fee Penalty",
     "general_fee": "Fee Structure",
     "admissions": "Admissions",
     "fees_finance": "Fees and Finance",
-    "academics_exams": "Academics and Exams",
-    "departments_faculty": "Departments and Faculty",
     "placements_careers": "Placements and Careers",
-    "facilities_hostels": "Facilities and Hostels",
     "student_services_clubs": "Student Services and Clubs",
-    "general_college_info": "General College Information",
     "unknown": "Unknown",
 }
 
 _CACHED_INTENT_PIPELINE: Optional[Pipeline] = None
+_CACHED_INTENT_PIPELINES: Dict[str, Pipeline] = {}
 
 
 def get_intent_classifier(
-    dataset_path: str | Path = DEFAULT_DATASET_PATH,
+    dataset_path: Optional[str | Path] = None,
     force_reload: bool = False,
 ) -> Optional[Pipeline]:
-    """Load the existing trained Logistic Regression intent classifier (or fit from campus_queries.csv train split)."""
-    global _CACHED_INTENT_PIPELINE
-    if _CACHED_INTENT_PIPELINE is not None and not force_reload:
-        return _CACHED_INTENT_PIPELINE
-
-    # 1. Try loading persisted MLflow sklearn model pickle from mlruns if present
-    import pickle
+    """Load the trained Logistic Regression intent classifier (preferring v2 if available)."""
+    global _CACHED_INTENT_PIPELINE, _CACHED_INTENT_PIPELINES
 
     repo_root = Path(__file__).resolve().parent.parent
-    mlruns_dir = repo_root / "mlruns"
-    if mlruns_dir.exists():
-        for pkl_path in sorted(mlruns_dir.rglob("model.pkl"), key=lambda p: p.stat().st_mtime, reverse=True):
-            try:
-                with pkl_path.open("rb") as f:
-                    loaded = pickle.load(f)
-                if isinstance(loaded, Pipeline) and hasattr(loaded, "predict_proba"):
-                    _CACHED_INTENT_PIPELINE = loaded
-                    return _CACHED_INTENT_PIPELINE
-            except Exception:
-                continue
 
-    # 2. Fallback: fit the exact LogisticRegression pipeline on the existing train split of campus_queries.csv
+    if dataset_path is not None:
+        target_path = Path(dataset_path)
+        if not target_path.is_absolute() and not target_path.exists() and (repo_root / target_path).exists():
+            target_path = repo_root / target_path
+    else:
+        v2_candidate = repo_root / DEFAULT_DATASET_V2_PATH
+        if v2_candidate.exists():
+            target_path = v2_candidate
+        else:
+            target_path = repo_root / DEFAULT_DATASET_PATH
+
+    cache_key = str(target_path.resolve()) if target_path.exists() else str(target_path)
+
+    if not force_reload:
+        if cache_key in _CACHED_INTENT_PIPELINES:
+            _CACHED_INTENT_PIPELINE = _CACHED_INTENT_PIPELINES[cache_key]
+            return _CACHED_INTENT_PIPELINE
+        if dataset_path is None and _CACHED_INTENT_PIPELINE is not None:
+            return _CACHED_INTENT_PIPELINE
+
+    # Try loading persisted MLflow sklearn model pickle from mlruns if dataset_path is default v1
+    if target_path == (repo_root / DEFAULT_DATASET_PATH):
+        import pickle
+
+        mlruns_dir = repo_root / "mlruns"
+        if mlruns_dir.exists():
+            for pkl_path in sorted(mlruns_dir.rglob("model.pkl"), key=lambda p: p.stat().st_mtime, reverse=True):
+                try:
+                    with pkl_path.open("rb") as f:
+                        loaded = pickle.load(f)
+                    if isinstance(loaded, Pipeline) and hasattr(loaded, "predict_proba"):
+                        _CACHED_INTENT_PIPELINES[cache_key] = loaded
+                        _CACHED_INTENT_PIPELINE = loaded
+                        return loaded
+                except Exception:
+                    continue
+
+    # Fit LogisticRegression pipeline on target dataset train split
     try:
-        data_file = Path(dataset_path)
-        if not data_file.exists():
-            data_file = repo_root / DEFAULT_DATASET_PATH
-        train_rows, _, _ = load_query_dataset(data_file)
+        train_rows, _, _ = load_query_dataset(target_path)
         pipeline = build_logistic_regression_pipeline()
         pipeline.fit([r["query_text"] for r in train_rows], [r["intent"] for r in train_rows])
+        _CACHED_INTENT_PIPELINES[cache_key] = pipeline
         _CACHED_INTENT_PIPELINE = pipeline
-        return _CACHED_INTENT_PIPELINE
+        return pipeline
     except Exception as exc:
-        logger.warning("Could not initialize intent classifier: %s", type(exc).__name__)
+        logger.warning("Could not initialize intent classifier for %s: %s", target_path, type(exc).__name__)
         return None
+
+
+def train_and_evaluate_v2(
+    dataset_path: str | Path = DEFAULT_DATASET_V2_PATH,
+    experiment_name: str = DEFAULT_EXPERIMENT_NAME,
+    tracking_uri: Optional[str] = None,
+    report_path: str | Path = DEFAULT_REPORT_V2_PATH,
+) -> Dict[str, Any]:
+    """Train and evaluate the upgraded 9-class intent classifier on campus_queries_v2.csv."""
+    data_file = Path(dataset_path)
+    if not data_file.exists():
+        repo_root = Path(__file__).resolve().parent.parent
+        data_file = repo_root / dataset_path
+
+    train_rows, test_rows, classes = load_query_dataset(data_file)
+    X_train = [r["query_text"] for r in train_rows]
+    y_train = [r["intent"] for r in train_rows]
+
+    # Baseline: DummyClassifier
+    dummy_model = build_dummy_baseline(strategy="most_frequent")
+    dummy_model.fit(X_train, y_train)
+    dummy_results = evaluate_classifier(dummy_model, test_rows, classes)
+
+    dummy_run_info = log_intent_experiment_to_mlflow(
+        model=dummy_model,
+        model_name="dummy_most_frequent_v2",
+        eval_results=dummy_results,
+        dataset_path=data_file,
+        train_count=len(train_rows),
+        test_count=len(test_rows),
+        experiment_name=experiment_name,
+        run_name="dummy-baseline-v2",
+        tracking_uri=tracking_uri,
+        log_model_artifact=False,
+    )
+
+    # Primary: Logistic Regression
+    lr_pipeline = build_logistic_regression_pipeline()
+    lr_pipeline.fit(X_train, y_train)
+    lr_results = evaluate_classifier(lr_pipeline, test_rows, classes)
+
+    lr_run_info = log_intent_experiment_to_mlflow(
+        model=lr_pipeline,
+        model_name="logistic_regression_v2",
+        eval_results=lr_results,
+        dataset_path=data_file,
+        train_count=len(train_rows),
+        test_count=len(test_rows),
+        experiment_name=experiment_name,
+        run_name="tfidf-logistic-regression-v2",
+        tracking_uri=tracking_uri,
+        log_model_artifact=True,
+    )
+
+    report = {
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "dataset": {
+            "path": str(data_file),
+            "checksum_sha256": _get_file_checksum(data_file),
+            "train_samples": len(train_rows),
+            "test_samples": len(test_rows),
+            "class_labels": classes,
+        },
+        "target_classes_count": len(classes),
+        "models": {
+            "dummy_baseline": {
+                "metrics": {
+                    "accuracy": dummy_results["accuracy"],
+                    "macro_f1": dummy_results["macro_f1"],
+                    "weighted_f1": dummy_results["weighted_f1"],
+                    "macro_precision": dummy_results["macro_precision"],
+                    "macro_recall": dummy_results["macro_recall"],
+                },
+                "per_class": dummy_results["per_class_metrics"],
+                "confusion_matrix": dummy_results["confusion_matrix"],
+                "mlflow_run": dummy_run_info,
+            },
+            "logistic_regression": {
+                "metrics": {
+                    "accuracy": lr_results["accuracy"],
+                    "macro_f1": lr_results["macro_f1"],
+                    "weighted_f1": lr_results["weighted_f1"],
+                    "macro_precision": lr_results["macro_precision"],
+                    "macro_recall": lr_results["macro_recall"],
+                },
+                "per_class": lr_results["per_class_metrics"],
+                "confusion_matrix": lr_results["confusion_matrix"],
+                "predictions": lr_results["predictions"],
+                "mlflow_run": lr_run_info,
+            },
+        },
+    }
+
+    rep_path = Path(report_path)
+    rep_path.parent.mkdir(parents=True, exist_ok=True)
+    rep_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    logger.info("Saved v2 evaluation report to %s", rep_path)
+    return report
 
 
 def extract_query_entities_and_intent(
@@ -471,19 +706,19 @@ def extract_query_entities_and_intent(
     """Extract domain entities and normalize semantically equivalent queries to structured intents.
 
     Identifies:
-      - normalized_intent ('admission_fee', 'hostel_fee', 'fee_penalty', 'general_fee', 'admissions', etc.)
-      - main_entity ('admission_fee', 'hostel', 'placement', 'examination', 'facility', 'faculty')
-      - admission_quota ('kea_cet', 'comedk', 'management', 'pgcet', 'dcet', 'multiple', or None)
-      - fee_category ('tuition', 'college', 'hostel', 'transportation', 'late_penalty', 'admission_fee', or None)
-      - academic_year ('2026-27', '1st year', 'higher semester', or None)
-      - board ('karnataka', 'non_karnataka', 'outside_india', or None)
-      - is_comparison (bool, True if comparing multiple quotas)
+      - normalized_intent ('admissions_cutoff', 'admission_fee', 'admissions_procedure', 'placements', etc.)
+      - main_entity ('admission_cutoff', 'admission_fee', 'hostel', 'placement', 'examination', 'facility', 'faculty')
+      - entities: structured dict with exam, branch, admission_quota, category, academic_year, year, etc.
+      - is_comparison (bool, True if comparing multiple quotas or branches)
       - retrieval_expansion (str of domain terms to enrich retrieval)
     """
     import re
 
     raw_q = (question or "").strip()
     lowered = raw_q.lower()
+
+    # Extract independent domain entities (PART B)
+    campus_ent = extract_campus_entities(raw_q)
 
     # Typo correction and synonym normalization for entity detection
     typo_map = {
@@ -516,11 +751,12 @@ def extract_query_entities_and_intent(
     quota_flags = [("kea_cet", has_kea_cet), ("comedk", has_comedk), ("management", has_mgmt), ("pgcet", has_pgcet)]
     detected_quotas = [q for q, present in quota_flags if present]
     is_comparison = bool(
-        re.search(r"\b(compare|comparison|difference\s+between|vs|versus)\b", normalized_q)
+        campus_ent.get("is_comparison")
+        or re.search(r"\b(compare|comparison|difference\s+between|vs|versus)\b", normalized_q)
         or len(detected_quotas) >= 2
     )
 
-    admission_quota = None
+    admission_quota = campus_ent.get("admission_quota")
     if is_comparison or len(detected_quotas) >= 2:
         admission_quota = "multiple"
     elif has_kea_cet:
@@ -546,7 +782,7 @@ def extract_query_entities_and_intent(
     is_tuition = bool(re.search(r"\b(tuition|college\s+fee|skill\s+lab)\b", normalized_q))
 
     fee_category = None
-    if has_fee_word or raw_intent == "fees_finance":
+    if has_fee_word or raw_intent in {"fees_finance", "admission_fees", "admission_fee"}:
         if is_hostel:
             fee_category = "hostel"
         elif is_penalty:
@@ -559,7 +795,7 @@ def extract_query_entities_and_intent(
             fee_category = "general_fee"
 
     # 3. Academic year & level
-    academic_year = None
+    academic_year = campus_ent.get("academic_year")
     year_match = re.search(r"\b(202[4-7](?:-2[5-8])?)\b", normalized_q)
     if year_match:
         academic_year = year_match.group(1)
@@ -581,49 +817,63 @@ def extract_query_entities_and_intent(
 
     # 5. Normalized Intent resolution
     normalized_intent = raw_intent
-    if has_fee_word or raw_intent == "fees_finance" or (raw_intent == "admissions" and (admission_quota or has_fee_word)):
+
+    # Check Cutoff intent
+    has_cutoff_word = bool(re.search(r"\b(cutoff|cut-off|closing\s+rank|cut\s+off|last\s+rank)\b", normalized_q))
+    is_cutoff_query = bool(
+        campus_ent.get("data_type") in {"cutoff", "previous_cutoff"}
+        or has_cutoff_word
+        or (raw_intent == "admissions_cutoff" and not has_fee_word)
+    )
+
+    if is_cutoff_query:
+        normalized_intent = "admissions_cutoff"
+        main_entity = "admission_cutoff"
+    elif has_fee_word or raw_intent in {"admission_fee", "admission_fees", "fees_finance"}:
         if is_hostel:
             normalized_intent = "hostel_fee"
+            main_entity = "hostel"
         elif is_penalty:
             normalized_intent = "fee_penalty"
-        elif admission_quota or any(k in normalized_q for k in ["admission", "seat", "allotment", "cutoff", "quota", "comedk", "kcet", "kea", "cet"]):
+            main_entity = "fee_penalty"
+        elif admission_quota or any(k in normalized_q for k in ["admission", "seat", "allotment", "quota", "comedk", "kcet", "kea", "cet"]):
             normalized_intent = "admission_fee"
-        elif has_fee_word:
+            main_entity = "admission_fee"
+        else:
             normalized_intent = "admission_fee"
+            main_entity = "admission_fee"
+    elif campus_ent.get("data_type") == "procedure" or raw_intent == "admissions_procedure" or any(k in normalized_q for k in ["procedure", "process", "steps", "verification", "how to apply"]):
+        normalized_intent = "admissions_procedure"
+        main_entity = "admissions_procedure"
     elif is_hostel:
         normalized_intent = "facilities_hostels"
-    elif any(k in normalized_q for k in ["placement", "package", "salary", "internship", "recruiter", "tier 1"]):
-        normalized_intent = "placements_careers"
-    elif any(k in normalized_q for k in ["exam", "see", "fast track", "revaluation", "grade card", "credits", "syllabus"]):
-        normalized_intent = "academics_exams"
-    elif any(k in normalized_q for k in ["department", "hod", "cabin", "faculty", "dean", "principal", "contact", "reception"]):
-        normalized_intent = "departments_faculty"
-    elif any(k in normalized_q for k in ["club", "fest", "activity", "nss", "ncc", "hackathon", "bonafide"]):
-        normalized_intent = "student_services_clubs"
-
-    # 6. Main Entity
-    if normalized_intent == "admission_fee":
-        main_entity = "admission_fee"
-    elif normalized_intent in {"hostel_fee", "facilities_hostels"}:
         main_entity = "hostel"
-    elif normalized_intent == "fee_penalty":
-        main_entity = "fee_penalty"
-    elif normalized_intent == "placements_careers":
+    elif raw_intent in {"placements", "placements_careers"} or any(k in normalized_q for k in ["placement", "package", "salary", "internship", "recruiter", "tier 1", "highest offer"]):
+        normalized_intent = "placements"
         main_entity = "placement"
-    elif normalized_intent == "academics_exams":
+    elif raw_intent == "academics_exams" or any(k in normalized_q for k in ["exam", "see", "fast track", "revaluation", "grade card", "credits", "syllabus", "timetable"]):
+        normalized_intent = "academics_exams"
         main_entity = "examination"
-    elif normalized_intent == "departments_faculty":
+    elif raw_intent == "departments_faculty" or any(k in normalized_q for k in ["department", "hod", "cabin", "faculty", "dean", "principal", "contact", "reception"]):
+        normalized_intent = "departments_faculty"
         main_entity = "faculty"
-    elif normalized_intent == "student_services_clubs":
+    elif raw_intent in {"student_services", "student_services_clubs"} or any(k in normalized_q for k in ["club", "fest", "activity", "nss", "ncc", "hackathon", "bonafide"]):
+        normalized_intent = "student_services"
         main_entity = "student_services"
-    elif normalized_intent == "admissions":
-        main_entity = "admission"
+    elif raw_intent in INTENT_DISPLAY_LABELS and raw_intent != "unknown":
+        normalized_intent = raw_intent
+        main_entity = raw_intent
     else:
+        normalized_intent = "general_college_info"
         main_entity = "campus_info"
 
-    # 7. Retrieval Expansion string
+    # 6. Retrieval Expansion string
     expansion_terms = []
-    if admission_quota == "kea_cet":
+    if is_cutoff_query:
+        exam_txt = campus_ent.get("exam") or "KCET COMEDK"
+        branch_txt = campus_ent.get("branch") or ""
+        expansion_terms.append(f"RVCE {exam_txt} {branch_txt} cutoff closing rank round 1 round 2".strip())
+    elif admission_quota == "kea_cet":
         expansion_terms.append("KEA CET KCET government quota admission process fees details 1st Year B.E. tuition college fees")
     elif admission_quota == "comedk":
         expansion_terms.append("COMEDK COMED-K quota admission process fees details 1st Year B.E. candidate portal")
@@ -640,18 +890,32 @@ def extract_query_entities_and_intent(
 
     retrieval_expansion = " ".join(expansion_terms)
 
+    structured_entities = {
+        # Core domain entities (PART B)
+        "exam": campus_ent.get("exam"),
+        "branch": campus_ent.get("branch"),
+        "branch_name": campus_ent.get("branch_name"),
+        "admission_quota": admission_quota,
+        "category": campus_ent.get("category"),
+        "academic_year": academic_year,
+        "year": campus_ent.get("year"),
+        "counselling_round": campus_ent.get("counselling_round"),
+        "company": campus_ent.get("company"),
+        "ctc": campus_ent.get("ctc"),
+        "ctc_raw": campus_ent.get("ctc_raw"),
+        "data_type": campus_ent.get("data_type"),
+        "is_comparison": is_comparison,
+        # Backward compatibility entities
+        "main_entity": main_entity,
+        "detected_quotas": detected_quotas,
+        "fee_category": fee_category,
+        "board": board,
+    }
+
     return {
         "normalized_intent": normalized_intent,
         "main_entity": main_entity,
-        "entities": {
-            "main_entity": main_entity,
-            "admission_quota": admission_quota,
-            "detected_quotas": detected_quotas,
-            "fee_category": fee_category,
-            "academic_year": academic_year,
-            "board": board,
-            "is_comparison": is_comparison,
-        },
+        "entities": structured_entities,
         "retrieval_expansion": retrieval_expansion,
     }
 
@@ -659,7 +923,7 @@ def extract_query_entities_and_intent(
 def classify_query_intent(
     question: str,
     confidence_threshold: float = 0.14,
-    dataset_path: str | Path = DEFAULT_DATASET_PATH,
+    dataset_path: Optional[str | Path] = None,
 ) -> Dict[str, Any]:
     """Classify a user query using the trained TF-IDF + Logistic Regression pipeline with safe unknown fallback."""
     cleaned = (question or "").strip()
@@ -668,6 +932,7 @@ def classify_query_intent(
         return {
             "intent": "unknown",
             "normalized_intent": "unknown",
+            "canonical_intent": "unknown",
             "raw_intent": "unknown",
             "intent_label": "Unknown",
             "confidence": 0.0,
@@ -712,12 +977,27 @@ def classify_query_intent(
     retrieval_expansion = extracted["retrieval_expansion"]
 
     # Mark as confident if entities (quota, hostel, penalty) provide strong semantic signals
-    has_strong_entity = bool(entities.get("admission_quota") or entities.get("fee_category") or entities.get("is_comparison"))
+    has_strong_entity = bool(
+        entities.get("admission_quota")
+        or entities.get("fee_category")
+        or entities.get("is_comparison")
+        or entities.get("exam")
+        or entities.get("branch")
+        or entities.get("data_type")
+    )
     final_confident = is_confident or has_strong_entity
 
+    if not final_confident and (pred_intent == "unknown" or confidence < confidence_threshold):
+        primary_intent = "unknown"
+        normalized_intent = "unknown"
+    else:
+        # For backward-compatibility with tests expecting 'admission_fee' for fee queries
+        primary_intent = "admission_fee" if normalized_intent in {"admission_fee", "admission_fees"} else normalized_intent
+
     return {
-        "intent": normalized_intent,
+        "intent": primary_intent,
         "normalized_intent": normalized_intent,
+        "canonical_intent": normalized_intent,
         "raw_intent": pred_intent,
         "intent_label": INTENT_DISPLAY_LABELS.get(normalized_intent, INTENT_DISPLAY_LABELS.get(pred_intent, pred_intent)),
         "confidence": confidence,

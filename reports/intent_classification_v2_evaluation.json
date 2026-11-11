@@ -1,0 +1,499 @@
+{
+  "timestamp": "2026-11-11T03:40:14Z",
+  "dataset": {
+    "path": "data\\queries\\campus_queries_v2.csv",
+    "checksum_sha256": "873cb82d4dd1",
+    "train_samples": 72,
+    "test_samples": 18,
+    "class_labels": [
+      "academics_exams",
+      "admission_fees",
+      "admissions_cutoff",
+      "admissions_procedure",
+      "departments_faculty",
+      "facilities_hostels",
+      "general_college_info",
+      "placements",
+      "student_services"
+    ]
+  },
+  "evaluation_limitation": "Preliminary Evaluation Warning: Evaluation was conducted on a test set of exactly 8 samples (1 per intent class). These results serve as a functional baseline smoke-test and pipeline verification; they are not statistically significant for claiming production-level generalization.",
+  "models": {
+    "dummy_baseline": {
+      "metrics": {
+        "accuracy": 0.1111,
+        "macro_f1": 0.0222,
+        "weighted_f1": 0.0222,
+        "macro_precision": 0.0123,
+        "macro_recall": 0.1111
+      },
+      "per_class": {
+        "academics_exams": {
+          "precision": 0.1111,
+          "recall": 1.0,
+          "f1_score": 0.2,
+          "support": 2
+        },
+        "admission_fees": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 2
+        },
+        "admissions_cutoff": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 2
+        },
+        "admissions_procedure": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 2
+        },
+        "departments_faculty": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 2
+        },
+        "facilities_hostels": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 2
+        },
+        "general_college_info": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 2
+        },
+        "placements": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 2
+        },
+        "student_services": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 2
+        }
+      },
+      "confusion_matrix": [
+        [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "mlflow_run": {
+        "run_id": "18a0ec4efb0d438b9e592876c6e9656a",
+        "run_name": "dummy-most-frequent-baseline",
+        "experiment_name": "campus-intent-classification",
+        "artifact_uri": "file:///C:/Users/lalan/Desktop/AI-Powered-Campus-Information-Assistant/mlruns/868937275772265553/18a0ec4efb0d438b9e592876c6e9656a/artifacts",
+        "model_uri": null,
+        "model_reload_verified": false
+      }
+    },
+    "logistic_regression": {
+      "metrics": {
+        "accuracy": 0.9444,
+        "macro_f1": 0.9407,
+        "weighted_f1": 0.9407,
+        "macro_precision": 0.963,
+        "macro_recall": 0.9444
+      },
+      "per_class": {
+        "academics_exams": {
+          "precision": 1.0,
+          "recall": 0.5,
+          "f1_score": 0.6667,
+          "support": 2
+        },
+        "admission_fees": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 2
+        },
+        "admissions_cutoff": {
+          "precision": 0.6667,
+          "recall": 1.0,
+          "f1_score": 0.8,
+          "support": 2
+        },
+        "admissions_procedure": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 2
+        },
+        "departments_faculty": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 2
+        },
+        "facilities_hostels": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 2
+        },
+        "general_college_info": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 2
+        },
+        "placements": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 2
+        },
+        "student_services": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 2
+        }
+      },
+      "confusion_matrix": [
+        [
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ]
+      ],
+      "predictions": [
+        {
+          "query_id": "Q2002",
+          "query_text": "cutoff rank for cse branch in kcet round 2",
+          "true_intent": "admissions_cutoff",
+          "predicted_intent": "admissions_cutoff",
+          "correct": true
+        },
+        {
+          "query_id": "Q2009",
+          "query_text": "What is the expected KCET cutoff rank for GM category in Computer Science?",
+          "true_intent": "admissions_cutoff",
+          "predicted_intent": "admissions_cutoff",
+          "correct": true
+        },
+        {
+          "query_id": "Q2017",
+          "query_text": "Where should students submit the bank challan receipt after online payment?",
+          "true_intent": "admission_fees",
+          "predicted_intent": "admission_fees",
+          "correct": true
+        },
+        {
+          "query_id": "Q2020",
+          "query_text": "tuition fees for non-karnataka students admitted through COMEDK",
+          "true_intent": "admission_fees",
+          "predicted_intent": "admission_fees",
+          "correct": true
+        },
+        {
+          "query_id": "Q2027",
+          "query_text": "What is the procedure to withdraw admission and get a refund of documents?",
+          "true_intent": "admissions_procedure",
+          "predicted_intent": "admissions_procedure",
+          "correct": true
+        },
+        {
+          "query_id": "Q2030",
+          "query_text": "documents checklist for 1st year B.E. physical reporting at admission centre",
+          "true_intent": "admissions_procedure",
+          "predicted_intent": "admissions_procedure",
+          "correct": true
+        },
+        {
+          "query_id": "Q2037",
+          "query_text": "Can students with an active backlog sit for mass recruiter placement drives?",
+          "true_intent": "placements",
+          "predicted_intent": "placements",
+          "correct": true
+        },
+        {
+          "query_id": "Q2040",
+          "query_text": "What is the average CTC for CSE branch in 2027 placements?",
+          "true_intent": "placements",
+          "predicted_intent": "placements",
+          "correct": true
+        },
+        {
+          "query_id": "Q2045",
+          "query_text": "Where can I download the autonomous 2022 scheme syllabus for mechanical engineering?",
+          "true_intent": "academics_exams",
+          "predicted_intent": "admissions_cutoff",
+          "correct": false
+        },
+        {
+          "query_id": "Q2050",
+          "query_text": "rules regarding makeup examinations and attendance shortage condonation",
+          "true_intent": "academics_exams",
+          "predicted_intent": "academics_exams",
+          "correct": true
+        },
+        {
+          "query_id": "Q2055",
+          "query_text": "Does the MCA department offer specialized electives in cloud computing?",
+          "true_intent": "departments_faculty",
+          "predicted_intent": "departments_faculty",
+          "correct": true
+        },
+        {
+          "query_id": "Q2060",
+          "query_text": "contact details and office location of the Dean of Student Affairs",
+          "true_intent": "departments_faculty",
+          "predicted_intent": "departments_faculty",
+          "correct": true
+        },
+        {
+          "query_id": "Q2065",
+          "query_text": "Is mess food fee included in hostel charges or paid separately?",
+          "true_intent": "facilities_hostels",
+          "predicted_intent": "facilities_hostels",
+          "correct": true
+        },
+        {
+          "query_id": "Q2070",
+          "query_text": "rules for visitors and parents staying at the campus guest house",
+          "true_intent": "facilities_hostels",
+          "predicted_intent": "facilities_hostels",
+          "correct": true
+        },
+        {
+          "query_id": "Q2075",
+          "query_text": "Who should student teams contact for organizing an inter-college cultural fest event?",
+          "true_intent": "student_services",
+          "predicted_intent": "student_services",
+          "correct": true
+        },
+        {
+          "query_id": "Q2080",
+          "query_text": "procedure to get official transcript and rank certificate for higher studies",
+          "true_intent": "student_services",
+          "predicted_intent": "student_services",
+          "correct": true
+        },
+        {
+          "query_id": "Q2085",
+          "query_text": "Who is the current Principal of RV College of Engineering?",
+          "true_intent": "general_college_info",
+          "predicted_intent": "general_college_info",
+          "correct": true
+        },
+        {
+          "query_id": "Q2090",
+          "query_text": "official website URL and social media channels of RVCE",
+          "true_intent": "general_college_info",
+          "predicted_intent": "general_college_info",
+          "correct": true
+        }
+      ],
+      "mlflow_run": {
+        "run_id": "3ef63c7844df4aeeaea095ab29119225",
+        "run_name": "tfidf-logistic-regression",
+        "experiment_name": "campus-intent-classification",
+        "artifact_uri": "file:///C:/Users/lalan/Desktop/AI-Powered-Campus-Information-Assistant/mlruns/868937275772265553/3ef63c7844df4aeeaea095ab29119225/artifacts",
+        "model_uri": "models:/m-be2c1c97a4f7479ba0971689f20a16ee",
+        "model_reload_verified": true
+      }
+    }
+  }
+}

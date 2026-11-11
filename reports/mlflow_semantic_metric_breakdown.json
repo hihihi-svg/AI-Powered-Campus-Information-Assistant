@@ -1,0 +1,14 @@
+[
+  {
+    "query_id": "q1",
+    "intent": "admissions",
+    "split_group": "test",
+    "query_text": "admission circulars and procedures",
+    "result_count": 2,
+    "has_result": true,
+    "max_score": 0.6256,
+    "retrieval_latency_seconds": 0.0344,
+    "top_result_title": "Admission Circulars",
+    "top_result_url": "https://rvce.edu.in/admission-circulars/"
+  }
+]

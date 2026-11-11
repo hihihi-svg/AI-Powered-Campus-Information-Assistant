@@ -1,0 +1,6 @@
+outs:
+- md5: 94ce3a17ca6de2aa3074db6941d14d79
+  size: 9316
+  hash: md5
+  path: campus_queries_v2.csv
+
