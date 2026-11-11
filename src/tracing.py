@@ -510,7 +510,7 @@ class RAGTracer:
         try:
             child = self.root_run.create_child(
                 name="citation_validation",
-                run_type="evaluator",
+                run_type="tool",
                 inputs={
                     "sources_count": len(sources),
                     "evidence_count": len(evidence),
