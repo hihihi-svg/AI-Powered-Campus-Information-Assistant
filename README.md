@@ -1,5 +1,5 @@
 ---
-title: AI Powered Campus Information Assistant
+tite: AI Powered Campus Information Assistant
 emoji: 🎓
 colorFrom: blue
 colorTo: indigo
